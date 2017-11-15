@@ -45,10 +45,16 @@ import socket
 import time
 import traceback
 import yaml
-import xmlrpclib
+try:
+    from xmlrpc.client import Fault
+except ImportError:
+    from xmlrpclib import Fault
 
 from operator import itemgetter
-from urlparse import urlparse
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
 import genpy
 
@@ -81,7 +87,7 @@ def _check_master():
 def _master_get_topic_types(master):
     try:
         val = master.getTopicTypes()
-    except xmlrpclib.Fault:
+    except Fault:
         #TODO: remove, this is for 1.1
         sys.stderr.write("WARNING: rostopic is being used against an older version of ROS/roscore\n")
         val = master.getPublishedTopics('/')
@@ -91,7 +97,7 @@ class ROSTopicHz(object):
     """
     ROSTopicHz receives messages for a topic and computes frequency stats
     """
-    def __init__(self, window_size, filter_expr=None):
+    def __init__(self, window_size, filter_expr=None, use_wtime=False):
         import threading
         self.lock = threading.Lock()
         self.last_printed_tn = 0
@@ -99,6 +105,7 @@ class ROSTopicHz(object):
         self.msg_tn = 0
         self.times =[]
         self.filter_expr = filter_expr
+        self.use_wtime = use_wtime
         
         # can't have infinite window size due to memory restrictions
         if window_size < 0:
@@ -114,7 +121,8 @@ class ROSTopicHz(object):
         if self.filter_expr is not None and not self.filter_expr(m):
             return
         with self.lock:
-            curr_rostime = rospy.get_rostime()
+            curr_rostime = rospy.get_rostime() if not self.use_wtime else \
+                    rospy.Time.from_sec(time.time())
 
             # time reset
             if curr_rostime.is_zero():
@@ -123,7 +131,8 @@ class ROSTopicHz(object):
                     self.times = []
                 return
             
-            curr = curr_rostime.to_sec()
+            curr = curr_rostime.to_sec() if not self.use_wtime else \
+                    rospy.Time.from_sec(time.time()).to_sec()
             if self.msg_t0 < 0 or self.msg_t0 > curr:
                 self.msg_t0 = curr
                 self.msg_tn = curr
@@ -173,7 +182,7 @@ class ROSTopicHz(object):
 def _sleep(duration):
     rospy.rostime.wallsleep(duration)
 
-def _rostopic_hz(topic, window_size=-1, filter_expr=None):
+def _rostopic_hz(topic, window_size=-1, filter_expr=None, use_wtime=False):
     """
     Periodically print the publishing rate of a topic to console until
     shutdown
@@ -185,7 +194,7 @@ def _rostopic_hz(topic, window_size=-1, filter_expr=None):
     if rospy.is_shutdown():
         return
     rospy.init_node(NAME, anonymous=True)
-    rt = ROSTopicHz(window_size, filter_expr=filter_expr)
+    rt = ROSTopicHz(window_size, filter_expr=filter_expr, use_wtime=use_wtime)
     # we use a large buffer size as we don't know what sort of messages we're dealing with.
     # may parameterize this in the future
     if filter_expr is not None:
@@ -194,10 +203,114 @@ def _rostopic_hz(topic, window_size=-1, filter_expr=None):
     else:
         sub = rospy.Subscriber(real_topic, rospy.AnyMsg, rt.callback_hz)        
     print("subscribed to [%s]"%real_topic)
+
+    if rospy.get_param('use_sim_time', False):
+        print("WARNING: may be using simulated time",file=sys.stderr)
+
     while not rospy.is_shutdown():
         _sleep(1.0)
         rt.print_hz()
-    
+
+
+class ROSTopicDelay(object):
+
+    def __init__(self, window_size):
+        import threading
+        self.lock = threading.Lock()
+        self.last_msg_tn = 0
+        self.msg_t0 = -1.
+        self.msg_tn = 0
+        self.delays = []
+
+        # can't have infinite window size due to memory restrictions
+        if window_size < 0:
+            window_size = 50000
+        self.window_size = window_size
+
+    def callback_delay(self, msg):
+        if not msg._has_header:
+            rospy.logerr('msg does not have header')
+            return
+        with self.lock:
+            curr_rostime = rospy.get_rostime()
+
+            # time reset
+            if curr_rostime.is_zero():
+                if len(self.delays) > 0:
+                    print("time has reset, resetting counters")
+                    self.delays = []
+                return
+
+            curr = curr_rostime.to_sec()
+            if self.msg_t0 < 0 or self.msg_t0 > curr:
+                self.msg_t0 = curr
+                self.msg_tn = curr
+                self.delays = []
+            else:
+                self.delays.append(curr_rostime.to_time() -
+                                   msg.header.stamp.to_time())
+                self.msg_tn = curr
+
+            if len(self.delays) > self.window_size - 1:
+                self.delays.pop(0)
+
+    def get_delay(self):
+        if self.msg_tn == self.last_msg_tn:
+            return
+        with self.lock:
+            if not self.delays:
+                return
+            n = len(self.delays)
+
+            mean = sum(self.delays) / n
+            rate = 1. / mean if mean > 0 else 0
+
+            std_dev = math.sqrt(sum((x - mean)**2 for x in self.delays) / n)
+
+            max_delta = max(self.delays)
+            min_delta = min(self.delays)
+
+            self.last_msg_tn = self.msg_tn
+        return mean, min_delta, max_delta, std_dev, n + 1
+
+    def print_delay(self):
+        """
+        print the average publishing delay to screen
+        """
+        if not self.delays:
+            return
+        ret = self.get_delay()
+        if ret is None:
+            print("no new messages")
+            return
+        delay, min_delta, max_delta, std_dev, window = ret
+        print("average delay: %.3f\n\tmin: %.3fs max: %.3fs std dev: %.5fs window: %s"%(delay, min_delta, max_delta, std_dev, window))
+
+
+def _rostopic_delay(topic, window_size=-1):
+    """
+    Periodically print the publishing delay of a topic to console until
+    shutdown
+    :param topic: topic name, ``str``
+    :param window_size: number of messages to average over, -1 for infinite, ``int``
+    """
+    # pause hz until topic is published
+    msg_class, real_topic, _ = get_topic_class(topic, blocking=True)
+    if rospy.is_shutdown():
+        return
+    rospy.init_node(NAME, anonymous=True)
+    rt = ROSTopicDelay(window_size)
+    sub = rospy.Subscriber(real_topic, msg_class, rt.callback_delay)
+    print("subscribed to [%s]" % real_topic)
+
+    if rospy.get_param('use_sim_time', False):
+        print("WARNING: may be using simulated time",file=sys.stderr)
+
+    while not rospy.is_shutdown():
+        _sleep(1.0)
+        rt.print_delay()
+
+
 class ROSTopicBandwidth(object):
     def __init__(self, window_size=100):
         import threading
@@ -251,6 +364,14 @@ class ROSTopicBandwidth(object):
             
         print("average: %s/s\n\tmean: %s min: %s max: %s window: %s"%(bw, mean, min_s, max_s, n))
 
+def _isstring_type(t):
+    valid_types = [str]
+    try:
+        valid_types.append(unicode)
+    except NameError:
+        pass
+    return t in valid_types
+
 def _rostopic_bw(topic, window_size=-1):
     """
     periodically print the received bandwidth of a topic to console until
@@ -271,25 +392,87 @@ def _rostopic_bw(topic, window_size=-1):
         _sleep(1.0)
         rt.print_bw()
 
-# TODO: port to the version I wrote for rxplot instead as it should be more efficient
-
+# code adapted from rqt_plot
 def msgevalgen(pattern):
     """
-    Generates a function that returns the relevant field (aka 'subtopic') of a Message object
-    :param pattern: subtopic, e.g. /x. Must have a leading '/' if specified, ``str``
+    Generates a function that returns the relevant field(s) (aka 'subtopic(s)') of a Message object
+    :param pattern: subtopic, e.g. /x[2:]/y[:-1]/z, ``str``
     :returns: function that converts a message into the desired value, ``fn(Message) -> value``
     """
-    if not pattern or pattern == '/':
-        return None
-    assert pattern[0] == '/'
-    def msgeval(msg):
-        # I will probably replace this with some less beautiful but more efficient
+    evals = []  # list of (field_name, slice_object) pairs
+    fields = [f for f in pattern.split('/') if f]
+    for f in fields:
+        if '[' in f:
+            field_name, rest = f.split('[', 1)
+            if not rest.endswith(']'):
+                print("missing closing ']' in slice spec '%s'" % f, file=sys.stderr)
+                return None
+            rest = rest[:-1]  # slice content, removing closing bracket
+            try:
+                array_index_or_slice_object = _get_array_index_or_slice_object(rest)
+            except AssertionError as e:
+                print("field '%s' has invalid slice argument '%s': %s"
+                      % (field_name, rest, str(e)), file=sys.stderr)
+                return None
+            evals.append((field_name, array_index_or_slice_object))
+        else:
+            evals.append((f, None))
+
+    def msgeval(msg, evals):
+        for i, (field_name, slice_object) in enumerate(evals):
+            try: # access field first
+                msg = getattr(msg, field_name)
+            except AttributeError:
+                print("no field named %s in %s" % (field_name, pattern), file=sys.stderr)
+                return None
+
+            if slice_object is not None: # access slice
+                try:
+                    msg = msg.__getitem__(slice_object)
+                except IndexError as e:
+                    print("%s: %s" % (str(e), pattern), file=sys.stderr)
+                    return None
+
+                # if a list is returned here (i.e. not only a single element accessed),
+                # we need to recursively call msg_eval() with the rest of evals
+                # in order to handle nested slices
+                if isinstance(msg, list):
+                    rest = evals[i + 1:]
+                    return [msgeval(m, rest) for m in msg]
+        return msg
+
+    return (lambda msg: msgeval(msg, evals)) if evals else None
+
+
+def _get_array_index_or_slice_object(index_string):
+    assert index_string != '', 'empty array index'
+    index_string_parts = index_string.split(':')
+    if len(index_string_parts) == 1:
         try:
-            return _get_nested_attribute(msg, pattern[1:])
-        except AttributeError as e:
-            sys.stdout.write("no field named [%s]"%pattern+"\n")
-            return None
-    return msgeval
+            array_index = int(index_string_parts[0])
+        except ValueError:
+            assert False, "non-integer array index step '%s'" % index_string_parts[0]
+        return array_index
+
+    slice_args = [None, None, None]
+    if index_string_parts[0] != '':
+        try:
+            slice_args[0] = int(index_string_parts[0])
+        except ValueError:
+            assert False, "non-integer slice start '%s'" % index_string_parts[0]
+    if index_string_parts[1] != '':
+        try:
+            slice_args[1] = int(index_string_parts[1])
+        except ValueError:
+            assert False, "non-integer slice stop '%s'" % index_string_parts[1]
+    if len(index_string_parts) > 2 and index_string_parts[2] != '':
+            try:
+                slice_args[2] = int(index_string_parts[2])
+            except ValueError:
+                assert False, "non-integer slice step '%s'" % index_string_parts[2]
+    if len(index_string_parts) > 3:
+        assert False, 'too many slice arguments'
+    return slice(*slice_args)
 
 def _get_nested_attribute(msg, nested_attributes):
     value = msg
@@ -324,6 +507,7 @@ def _get_topic_type(topic):
                 break
             msg = msg_class()
             nested_attributes = topic[len(t) + 1:].rstrip('/')
+            nested_attributes = nested_attributes.split('[')[0]
             if nested_attributes == '':
                 break
             try:
@@ -382,7 +566,7 @@ def get_topic_class(topic, blocking=False):
         return None, None, None
     msg_class = roslib.message.get_message_class(topic_type)
     if not msg_class:
-        raise ROSTopicException("Cannot load message class for [%s]. Are your messages built?"%topic_type)
+        raise ROSTopicException("Cannot load message class for [%s]. Are your messages built?" % topic_type)
     return msg_class, real_topic, msg_eval
 
 def _str_plot_fields(val, f, field_filter):
@@ -413,7 +597,7 @@ def _sub_str_plot_fields(val, f, field_filter):
         sub = [s for s in sub if s is not None]
         if sub:
             return ','.join([s for s in sub])
-    elif type_ in (str, unicode):
+    elif _isstring_type(type_):
         return f
     elif type_ in (list, tuple):
         if len(val) == 0:
@@ -423,12 +607,12 @@ def _sub_str_plot_fields(val, f, field_filter):
         # no arrays of arrays
         if type0 in (bool, int, float) or \
                isinstance(val0, genpy.TVal):
-            return ','.join(["%s%s"%(f,x) for x in xrange(0,len(val))])
-        elif type0 in (str, unicode):
+            return ','.join(["%s%s"%(f,x) for x in range(0,len(val))])
+        elif _isstring_type(type0):
             
-            return ','.join(["%s%s"%(f,x) for x in xrange(0,len(val))])
+            return ','.join(["%s%s"%(f,x) for x in range(0,len(val))])
         elif hasattr(val0, "_slot_types"):
-            labels = ["%s%s"%(f,x) for x in xrange(0,len(val))]
+            labels = ["%s%s"%(f,x) for x in range(0,len(val))]
             sub = [s for s in [_sub_str_plot_fields(v, sf, field_filter) for v,sf in zip(val, labels)] if s]
             if sub:
                 return ','.join([s for s in sub])
@@ -485,7 +669,7 @@ def _sub_str_plot(val, time_offset, field_filter):
         sub = [s for s in sub if s is not None]
         if sub:
             return ','.join(sub)
-    elif type_ in (str, unicode):
+    elif _isstring_type(type_):
         return val
     elif type_ in (list, tuple):
         if len(val) == 0:
@@ -498,7 +682,7 @@ def _sub_str_plot(val, time_offset, field_filter):
         elif type0 in (int, float) or \
                isinstance(val0, genpy.TVal):
             return ','.join([str(v) for v in val])
-        elif type0 in (str, unicode):
+        elif _isstring_type(type0):
             return ','.join([v for v in val])            
         elif hasattr(val0, "_slot_types"):
             sub = [s for s in [_sub_str_plot(v, time_offset, field_filter) for v in val] if s is not None]
@@ -513,7 +697,7 @@ def _convert_getattr(val, f, t):
     to convert uint8[] fields back to an array type.
     """
     attr = getattr(val, f)
-    if type(attr) in (str, unicode) and 'uint8[' in t:
+    if _isstring_type(type(attr)) and 'uint8[' in t:
         return [ord(x) for x in attr]
     else:
         return attr
@@ -527,15 +711,16 @@ class CallbackEcho(object):
     def __init__(self, topic, msg_eval, plot=False, filter_fn=None,
                  echo_clear=False, echo_all_topics=False,
                  offset_time=False, count=None,
-                 fixed_numeric_width=None, field_filter_fn=None):
+                 field_filter_fn=None, fixed_numeric_width=None):
         """
-        :param plot: if ``True``, echo in plotting-friendly format, ``bool``
+        :param plot: if ``True``, echo in plotting-friendly format (csv), ``bool``
         :param filter_fn: function that evaluates to ``True`` if message is to be echo'd, ``fn(topic, msg)``
         :param echo_all_topics: (optional) if ``True``, echo all messages in bag, ``bool``
         :param offset_time: (optional) if ``True``, display time as offset from current time, ``bool``
         :param count: number of messages to echo, ``None`` for infinite, ``int``
         :param fixed_numeric_width: fixed width for numeric values, ``None`` for automatic, ``int``
         :param field_filter_fn: filter the fields that are strified for Messages, ``fn(Message)->iter(str)``
+        :param fixed_numeric_width: fixed width for numeric values, ``None`` for automatic, ``int``
         """
         if topic and topic[-1] == '/':
             topic = topic[:-1]
@@ -543,6 +728,7 @@ class CallbackEcho(object):
         self.msg_eval = msg_eval
         self.plot = plot
         self.filter_fn = filter_fn
+        self.fixed_numeric_width = fixed_numeric_width
 
         self.prefix = ''
         self.suffix = '\n---' if not plot else ''# same as YAML document separator, bug #3291
@@ -723,7 +909,9 @@ def _rostopic_echo(topic, callback_echo, bag_file=None, echo_all_topics=False):
                     index = submsg_class.__slots__.index(field)
                     type_information = submsg_class._slot_types[index]
                     if fields:
-                        submsg_class = roslib.message.get_message_class(type_information)
+                        submsg_class = roslib.message.get_message_class(type_information.split('[', 1)[0])
+                        if not submsg_class:
+                            raise ROSTopicException("Cannot load message class for [%s]. Are your messages built?" % type_information)
 
         use_sim_time = rospy.get_param('/use_sim_time', False)
         sub = rospy.Subscriber(real_topic, msg_class, callback_echo.callback, {'topic': topic, 'type_information': type_information})
@@ -922,8 +1110,12 @@ def get_info_text(topic):
     
     :param topic: topic name, ``str``
     """
-    import cStringIO, itertools
-    buff = cStringIO.StringIO()
+    try:
+        from cStringIO import StringIO
+    except ImportError:
+        from io import StringIO
+    import itertools
+    buff = StringIO()
     def topic_type(t, topic_types):
         matches = [t_type for t_name, t_type in topic_types if t_name == t]
         if matches:
@@ -993,7 +1185,7 @@ def _rostopic_cmd_echo(argv):
                       dest="plot", default=False,
                       action="store_true",
                       help="echo in a plotting friendly format")
-    parser.add_option("-w", 
+    parser.add_option("-w",
                       dest="fixed_numeric_width", default=None, metavar="NUM_WIDTH",
                       help="fixed width for numeric values")
     parser.add_option("--filter", 
@@ -1062,7 +1254,7 @@ def _rostopic_cmd_echo(argv):
                                  filter_fn=filter_fn,
                                  echo_clear=options.clear, echo_all_topics=options.all_topics,
                                  offset_time=options.offset_time, count=msg_count,
-                                 fixed_numeric_width=fixed_numeric_width, field_filter_fn=field_filter_fn)
+                                 field_filter_fn=field_filter_fn, fixed_numeric_width=fixed_numeric_width)
     try:
         _rostopic_echo(topic, callback_echo, bag_file=options.bag)
     except socket.error:
@@ -1104,6 +1296,9 @@ def _rostopic_cmd_hz(argv):
     parser.add_option("--filter",
                       dest="filter_expr", default=None,
                       help="only measure messages matching the specified Python expression", metavar="EXPR")
+    parser.add_option("--wall-time",
+                      dest="use_wtime", default=False, action="store_true",
+                      help="calculates rate using wall time which can be helpful when clock isnt published during simulation")
 
     (options, args) = parser.parse_args(args)
     if len(args) == 0:
@@ -1129,7 +1324,25 @@ def _rostopic_cmd_hz(argv):
         filter_expr = expr_eval(options.filter_expr)
     else:
         filter_expr = None
-    _rostopic_hz(topic, window_size=window_size, filter_expr=filter_expr)
+    _rostopic_hz(topic, window_size=window_size, filter_expr=filter_expr,
+                 use_wtime=options.use_wtime)
+
+
+def _rostopic_cmd_delay(argv):
+    args = argv[2:]
+    import argparse
+    parser = argparse.ArgumentParser(usage="%(prog)s delay [options] /topic", prog=NAME)
+    parser.add_argument("topic", help="topic name to be calcurated the delay")
+    parser.add_argument("-w", "--window",
+                        dest="window_size", default=-1, type=int,
+                        help="window size, in # of messages, for calculating rate")
+
+    args = parser.parse_args(args)
+    topic_name = args.topic
+    window_size = args.window_size
+    topic = rosgraph.names.script_resolve_name('rostopic', topic_name)
+    _rostopic_delay(topic, window_size=window_size)
+
 
 def _rostopic_cmd_bw(argv=sys.argv):
     args = argv[2:]
@@ -1219,7 +1432,7 @@ def create_publisher(topic_name, topic_type, latch):
     pub = rospy.Publisher(topic_name, msg_class, latch=latch, queue_size=100)
     return pub, msg_class
 
-def _publish_at_rate(pub, msg, rate, verbose=False):
+def _publish_at_rate(pub, msg, rate, verbose=False, substitute_keywords=False, pub_args=None):
     """
     Publish message at specified rate. Subroutine of L{publish_message()}.
     
@@ -1233,6 +1446,8 @@ def _publish_at_rate(pub, msg, rate, verbose=False):
     except ValueError:
         raise ROSTopicException("Rate must be a number")
     while not rospy.is_shutdown():
+        if substitute_keywords:
+            _fillMessageArgs(msg, pub_args)
         if verbose:
             print("publishing %s"%msg)
         pub.publish(msg)
@@ -1256,7 +1471,7 @@ def _publish_latched(pub, msg, once=False, verbose=False):
     if not once:
         rospy.spin()        
 
-def publish_message(pub, msg_class, pub_args, rate=None, once=False, verbose=False):
+def publish_message(pub, msg_class, pub_args, rate=None, once=False, verbose=False, substitute_keywords=False):
     """
     Create new instance of msg_class, populate with pub_args, and publish. This may
     print output to screen.
@@ -1269,6 +1484,30 @@ def publish_message(pub, msg_class, pub_args, rate=None, once=False, verbose=Fal
     :param verbose: If ``True``, print more verbose output to stdout, ``bool``
     """
     msg = msg_class()
+
+    _fillMessageArgs(msg, pub_args)
+
+    try:
+        
+        if rate is None:
+            s = "publishing and latching [%s]"%(msg) if verbose else "publishing and latching message"
+            if once:
+                s = s + " for %s seconds"%_ONCE_DELAY
+            else:
+                s = s + ". Press ctrl-C to terminate"
+            print(s)
+
+            _publish_latched(pub, msg, once, verbose)
+        else:
+            _publish_at_rate(pub, msg, rate, verbose=verbose, substitute_keywords=substitute_keywords, pub_args=pub_args)
+            
+    except rospy.ROSSerializationException as e:
+        import rosmsg
+        # we could just print the message definition, but rosmsg is more readable
+        raise ROSTopicException("Unable to publish message. One of the fields has an incorrect type:\n"+\
+                                "  %s\n\nmsg file:\n%s"%(e, rosmsg.get_msg_text(msg_class._type)))
+
+def _fillMessageArgs(msg, pub_args):
     try:
         # Populate the message and enable substitution keys for 'now'
         # and 'auto'. There is a corner case here: this logic doesn't
@@ -1279,34 +1518,14 @@ def publish_message(pub, msg_class, pub_args, rate=None, once=False, verbose=Fal
         # do more reasoning over types. to avoid ambiguous cases
         # (e.g. a std_msgs/String type, which only has a single string
         # field).
-        
+
         # allow the use of the 'now' string with timestamps and 'auto' with header
-        now = rospy.get_rostime() 
+        now = rospy.get_rostime()
         import std_msgs.msg
         keys = { 'now': now, 'auto': std_msgs.msg.Header(stamp=now) }
         genpy.message.fill_message_args(msg, pub_args, keys=keys)
     except genpy.MessageException as e:
         raise ROSTopicException(str(e)+"\n\nArgs are: [%s]"%genpy.message.get_printable_message_args(msg))
-    try:
-        
-        if rate is None:
-            s = "publishing and latching [%s]"%(msg) if verbose else "publishing and latching message"
-            if once:
-                s = s + " for %s seconds"%_ONCE_DELAY
-            else:
-                s = s + ". Press ctrl-C to terminate"
-            print(s)
-        
-        if rate is None:
-            _publish_latched(pub, msg, once, verbose)
-        else:
-            _publish_at_rate(pub, msg, rate, verbose)
-            
-    except rospy.ROSSerializationException as e:
-        import rosmsg
-        # we could just print the message definition, but rosmsg is more readable
-        raise ROSTopicException("Unable to publish message. One of the fields has an incorrect type:\n"+\
-                                "  %s\n\nmsg file:\n%s"%(e, rosmsg.get_msg_text(msg_class._type)))
     
 def _rostopic_cmd_pub(argv):
     """
@@ -1330,6 +1549,8 @@ def _rostopic_cmd_pub(argv):
                       help="read args from YAML file (Bagy)")
     parser.add_option("-l", '--latch', dest="latch", default=False, action="store_true",
                       help="enable latching for -f, -r and piped input.  This latches the first message.")
+    parser.add_option("-s", '--substitute-keywords', dest="substitute_keywords", default=False, action="store_true",
+                      help="When publishing with a rate, performs keyword ('now' or 'auto') substitution for each message")
     #parser.add_option("-p", '--param', dest="parameter", metavar='/PARAM', default=None,
     #                  help="read args from ROS parameter (Bagy format)")
     
@@ -1390,7 +1611,7 @@ def _rostopic_cmd_pub(argv):
             rate = 10.
         stdin_publish(pub, msg_class, rate, options.once, options.file, options.verbose)
     else:
-        argv_publish(pub, msg_class, pub_args, rate, options.once, options.verbose)
+        argv_publish(pub, msg_class, pub_args, rate, options.once, options.verbose, substitute_keywords=options.substitute_keywords)
         
 
 def file_yaml_arg(filename):
@@ -1413,8 +1634,8 @@ def file_yaml_arg(filename):
             raise ROSTopicException("invalid YAML in file: %s"%(str(e)))
     return bagy_iter
     
-def argv_publish(pub, msg_class, pub_args, rate, once, verbose):
-    publish_message(pub, msg_class, pub_args, rate, once, verbose=verbose)
+def argv_publish(pub, msg_class, pub_args, rate, once, verbose, substitute_keywords=False):
+    publish_message(pub, msg_class, pub_args, rate, once, verbose=verbose, substitute_keywords=substitute_keywords)
 
     if once:
         # stick around long enough for others to grab
@@ -1536,7 +1757,6 @@ def stdin_publish(pub, msg_class, rate, once, filename, verbose):
     # publish, though we don't wait too long.
     wait_for_subscriber(pub, SUBSCRIBER_TIMEOUT)
 
-    single_arg = None
     for pub_args in iterator():
         if rospy.is_shutdown():
             break
@@ -1559,16 +1779,6 @@ def stdin_publish(pub, msg_class, rate, once, filename, verbose):
             r.sleep()
         if rospy.is_shutdown() or once:
             break
-
-    # Publishing a single message repeatedly
-    if single_arg and r and not once:
-        while not rospy.is_shutdown():
-            try:
-                publish_message(pub, msg_class, pub_args, None, True, verbose=verbose)
-                if r is not None:
-                    r.sleep()
-            except ValueError as e:
-                break
 
 def stdin_yaml_arg():
     """
@@ -1679,6 +1889,7 @@ def _fullusage():
 
 Commands:
 \trostopic bw\tdisplay bandwidth used by topic
+\trostopic delay\tdisplay delay of topic from timestamp in header
 \trostopic echo\tprint messages to screen
 \trostopic find\tfind topics by type
 \trostopic hz\tdisplay publishing rate of topic    
@@ -1709,7 +1920,7 @@ def rostopicmain(argv=None):
             _rostopic_cmd_hz(argv)
         elif command == 'type':
             _rostopic_cmd_type(argv)
-        elif command in 'list':
+        elif command == 'list':
             _rostopic_cmd_list(argv)
         elif command == 'info':
             _rostopic_cmd_info(argv)
@@ -1719,6 +1930,8 @@ def rostopicmain(argv=None):
             _rostopic_cmd_bw(argv)
         elif command == 'find':
             _rostopic_cmd_find(argv)
+        elif command == 'delay':
+            _rostopic_cmd_delay(argv)
         else:
             _fullusage()
     except socket.error:

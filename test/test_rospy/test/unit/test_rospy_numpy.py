@@ -33,6 +33,10 @@
 
 import os
 import sys
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 import struct
 import unittest
 import time
@@ -41,13 +45,12 @@ try:
     import numpy
     disable = False
 except ImportError:
-    print "cannot import numpy, test is disabled"
+    print("cannot import numpy, test is disabled")
     disable = True
 
 # this is partially a teste of the rospy/Tutorials/numpy
 from test_rospy.msg import Floats
 
-import cStringIO
 # test rospy.names package
 class TestRospyNumpy(unittest.TestCase):
 
@@ -55,7 +58,7 @@ class TestRospyNumpy(unittest.TestCase):
         if disable:
             return
         vals = [1.0, 2.1, 3.2, 4.3, 5.4, 6.5]
-        b = cStringIO.StringIO()
+        b = StringIO()
         f = Floats(numpy.array([1.0, 2.1, 3.2, 4.3, 5.4, 6.5], dtype=numpy.float32))
         f.serialize(b)
 
@@ -75,3 +78,12 @@ class TestRospyNumpy(unittest.TestCase):
         self.assert_(isinstance(f3.data, numpy.ndarray), type(f3.data))
         v = numpy.equal(f3.data, numpy.array([1.0, 2.1, 3.2, 4.3, 5.4, 6.5], dtype=numpy.float32))
         self.assert_(v.all())
+
+    def test_class_identity(self):
+        from rospy.numpy_msg import numpy_msg
+        self.assert_(isinstance(numpy_msg(Floats)(), numpy_msg(Floats)))
+
+        FloatsNP = numpy_msg(Floats)
+        FloatsNP2 = numpy_msg(Floats)
+
+        self.assert_(FloatsNP is FloatsNP2)

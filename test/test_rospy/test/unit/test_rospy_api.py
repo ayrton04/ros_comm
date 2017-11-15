@@ -47,7 +47,10 @@ class TestRospyApi(unittest.TestCase):
         import rospy
         #trip wires against Message API
         m = rospy.Message()
-        from cStringIO import StringIO
+        try:
+            from cStringIO import StringIO
+        except ImportError:
+            from io import StringIO
         buff = StringIO()
         m.serialize(buff)
         self.assertEquals(0, buff.tell())
@@ -58,7 +61,10 @@ class TestRospyApi(unittest.TestCase):
         # rospy uses its functionality.
         
 
-        from cStringIO import StringIO
+        try:
+            from cStringIO import StringIO
+        except ImportError:
+            from io import StringIO
         import rospy
         #trip wires against AnyMsg API
         m = rospy.AnyMsg()
@@ -112,6 +118,11 @@ class TestRospyApi(unittest.TestCase):
         rospy.loginfo        
         rospy.logout #deprecated
         rospy.logwarn
+        rospy.logdebug_throttle
+        rospy.logerr_throttle
+        rospy.logfatal_throttle
+        rospy.loginfo_throttle
+        rospy.logwarn_throttle
         rospy.myargv
         rospy.on_shutdown
         rospy.parse_rosrpc_uri

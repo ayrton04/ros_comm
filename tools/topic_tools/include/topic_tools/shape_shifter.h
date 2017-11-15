@@ -175,7 +175,6 @@ struct PreDeserialize<topic_tools::ShapeShifter>
     std::string msg_def  = (*params.connection_header)["message_definition"];
     std::string latching  = (*params.connection_header)["latching"];
 
-    typedef std::map<std::string, std::string> map_t;
     params.message->morph(md5, datatype, msg_def, latching);
   }
 };
@@ -206,7 +205,7 @@ boost::shared_ptr<M> ShapeShifter::instantiate() const
   if (ros::message_traits::md5sum<M>() != getMD5Sum())
     throw ShapeShifterException("Tried to instantiate message without matching md5sum.");
   
-  boost::shared_ptr<M> p(new M());
+  boost::shared_ptr<M> p(boost::make_shared<M>());
 
   ros::serialization::IStream s(msgBuf, msgBufUsed);
   ros::serialization::deserialize(s, *p);

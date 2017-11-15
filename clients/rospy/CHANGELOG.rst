@@ -2,6 +2,85 @@
 Changelog for package rospy
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.21 (2017-03-06)
+--------------------
+* make get_published_topics threadsafe (`#958 <https://github.com/ros/ros_comm/issues/958>`_)
+* fix wrong type in docstring for rospy.Timer (`#878 <https://github.com/ros/ros_comm/pull/878>`_)
+* add logXXX_throttle functions (`#812 <https://github.com/ros/ros_comm/pull/812>`_)
+
+1.11.20 (2016-06-27)
+--------------------
+
+1.11.19 (2016-04-18)
+--------------------
+
+1.11.18 (2016-03-17)
+--------------------
+
+1.11.17 (2016-03-11)
+--------------------
+* preserve identity of numpy_msg(T) (`#758 <https://github.com/ros/ros_comm/pull/758>`_)
+
+1.11.16 (2015-11-09)
+--------------------
+* catch ROSInterruptException from rospy timers when shutting down (`#690 <https://github.com/ros/ros_comm/pull/690>`_)
+
+1.11.15 (2015-10-13)
+--------------------
+* validate name after remapping (`#669 <https://github.com/ros/ros_comm/pull/669>`_)
+
+1.11.14 (2015-09-19)
+--------------------
+* fix memory/thread leak with QueuedConnection (`#661 <https://github.com/ros/ros_comm/pull/661>`_)
+* fix signaling already shutdown to client hooks with the appropriate signature (`#651 <https://github.com/ros/ros_comm/issues/651>`_)
+* fix bug with missing current logger levels (`#631 <https://github.com/ros/ros_comm/pull/631>`_)
+
+1.11.13 (2015-04-28)
+--------------------
+
+1.11.12 (2015-04-27)
+--------------------
+
+1.11.11 (2015-04-16)
+--------------------
+* add rosconsole command line tool to change logger levels (`#576 <https://github.com/ros/ros_comm/pull/576>`_)
+* add accessor for remaining time of the Rate class (`#588 <https://github.com/ros/ros_comm/pull/588>`_)
+* fix high latency when using asynchronous publishing (`#547 <https://github.com/ros/ros_comm/issues/547>`_)
+* fix error handling when publishing on Empty topic (`#566 <https://github.com/ros/ros_comm/pull/566>`_)
+
+1.11.10 (2014-12-22)
+--------------------
+* add specific exception for time jumping backwards (`#485 <https://github.com/ros/ros_comm/issues/485>`_)
+* make param functions thread-safe (`#523 <https://github.com/ros/ros_comm/pull/523>`_)
+* fix infinitely retrying subscriber (`#533 <https://github.com/ros/ros_comm/issues/533>`_)
+* fix removal of QueuedConnection leading to wrong subscriber count (`#526 <https://github.com/ros/ros_comm/issues/526>`_)
+* fix TCPROS header validation when `callerid` header is not set (`#522 <https://github.com/ros/ros_comm/issues/522>`_, regression from 1.11.1)
+* fix memory leak when using subcriber statistics (`#520 <https://github.com/ros/ros_comm/issues/520>`_)
+* fix reported traffic in bytes from Python nodes (`#501 <https://github.com/ros/ros_comm/issues/501>`_)
+
+1.11.9 (2014-08-18)
+-------------------
+* populate delivered_msgs field of TopicStatistics message (`#486 <https://github.com/ros/ros_comm/issues/486>`_)
+
+1.11.8 (2014-08-04)
+-------------------
+* fix topic/connection statistics reporting code (`#482 <https://github.com/ros/ros_comm/issues/482>`_)
+
+1.11.7 (2014-07-18)
+-------------------
+
+1.11.6 (2014-07-10)
+-------------------
+* make MasterProxy thread-safe (`#459 <https://github.com/ros/ros_comm/issues/459>`_)
+* check ROS_HOSTNAME for localhost / ROS_IP for 127./::1 and prevent connections from other hosts in that case (`#452 <https://github.com/ros/ros_comm/issues/452>`)_
+
+1.11.5 (2014-06-24)
+-------------------
+
+1.11.4 (2014-06-16)
+-------------------
+* Python 3 compatibility (`#426 <https://github.com/ros/ros_comm/issues/426>`_)
+
 1.11.3 (2014-05-21)
 -------------------
 * allow shutdown hooks to be any callable object (`#410 <https://github.com/ros/ros_comm/issues/410>`_)

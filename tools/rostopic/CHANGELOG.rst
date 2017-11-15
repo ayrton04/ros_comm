@@ -2,6 +2,71 @@
 Changelog for package rostopic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.21 (2017-03-06)
+--------------------
+
+1.11.20 (2016-06-27)
+--------------------
+
+1.11.19 (2016-04-18)
+--------------------
+
+1.11.18 (2016-03-17)
+--------------------
+
+1.11.17 (2016-03-11)
+--------------------
+* add "rostopic delay" to measure message delay compared to the input from real world (`#719 <https://github.com/ros/ros_comm/pull/719>`_)
+* add option to perform keyword substitution for messages published with "rostopic pub" (`#702 <https://github.com/ros/ros_comm/pull/702>`_)
+* add wall-time option for rostopic hz (`#674 <https://github.com/ros/ros_comm/pull/674>`_)
+
+1.11.16 (2015-11-09)
+--------------------
+
+1.11.15 (2015-10-13)
+--------------------
+* add warning to rostopic hz about simulated time (`#672 <https://github.com/ros/ros_comm/pull/672>`_)
+
+1.11.14 (2015-09-19)
+--------------------
+* support specifying multiple array indices (`#606 <https://github.com/ros/ros_comm/pull/606>`_)
+* fix string type check if variable is unicode
+
+1.11.13 (2015-04-28)
+--------------------
+
+1.11.12 (2015-04-27)
+--------------------
+* fix command parsing for rosservice and rostopic to not accept arbitrary substrings of 'list' (`#609 <https://github.com/ros/ros_comm/issues/609>`_)
+
+1.11.11 (2015-04-16)
+--------------------
+
+1.11.10 (2014-12-22)
+--------------------
+* add support for fixed-width floating-point and integer array values (`#400 <https://github.com/ros/ros_comm/issues/400>`_)
+
+1.11.9 (2014-08-18)
+-------------------
+
+1.11.8 (2014-08-04)
+-------------------
+* fix handling of array index when being part of the topic (`#480 <https://github.com/ros/ros_comm/issues/480>`_)
+* support splice arguments in 'rostopic echo' (`#480 <https://github.com/ros/ros_comm/issues/480>`_)
+
+1.11.7 (2014-07-18)
+-------------------
+
+1.11.6 (2014-07-10)
+-------------------
+
+1.11.5 (2014-06-24)
+-------------------
+
+1.11.4 (2014-06-16)
+-------------------
+* Python 3 compatibility (`#426 <https://github.com/ros/ros_comm/issues/426>`_, `#427 <https://github.com/ros/ros_comm/issues/427>`_)
+
 1.11.3 (2014-05-21)
 -------------------
 * add publisher queue_size to rostopic

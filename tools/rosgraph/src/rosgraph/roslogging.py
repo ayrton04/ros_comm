@@ -43,7 +43,17 @@ import logging.config
 import rospkg
 from rospkg.environment import ROS_LOG_DIR
 
-class LoggingException: pass
+class LoggingException(Exception): pass
+
+def renew_latest_logdir(logfile_dir):
+    log_dir = os.path.dirname(logfile_dir)
+    latest_dir = os.path.join(log_dir, 'latest')
+    if os.path.lexists(latest_dir):
+        if not os.path.islink(latest_dir):
+            return False
+        os.remove(latest_dir)
+    os.symlink(logfile_dir, latest_dir)
+    return True
 
 def configure_logging(logname, level=logging.INFO, filename=None, env=None):
     """
@@ -77,6 +87,16 @@ def configure_logging(logname, level=logging.INFO, filename=None, env=None):
             return None
     elif os.path.isfile(logfile_dir):
         raise LoggingException("Cannot save log files: file [%s] is in the way"%logfile_dir)
+
+    # the log dir itself should not be symlinked as latest
+    if logfile_dir != log_dir:
+        if sys.platform not in ['win32']:
+            try:
+                success = renew_latest_logdir(logfile_dir)
+                if not success:
+                    sys.stderr.write("INFO: cannot create a symlink to latest log directory\n")
+            except OSError as e:
+                sys.stderr.write("INFO: cannot create a symlink to latest log directory: %s\n" % e)
 
     if 'ROS_PYTHON_LOG_CONFIG_FILE' in os.environ:
         config_file = os.environ['ROS_PYTHON_LOG_CONFIG_FILE']
@@ -152,11 +172,33 @@ class RosStreamHandler(logging.Handler):
 
     def emit(self, record):
         level, color = _logging_to_rospy_names[record.levelname]
-        msg = '[%s] [WallTime: %f]' % (level, time.time())
-        if self._get_time is not None and not self._is_wallclock():
-            msg += ' [%f]' % self._get_time()
-        msg += ' %s\n' % record.getMessage()
-
+        if 'ROSCONSOLE_FORMAT' in os.environ.keys():
+            msg = os.environ['ROSCONSOLE_FORMAT']
+            msg = msg.replace('${severity}', level)
+            msg = msg.replace('${message}', str(record.getMessage()))
+            msg = msg.replace('${walltime}', '%f' % time.time())
+            msg = msg.replace('${thread}', str(record.thread))
+            msg = msg.replace('${logger}', str(record.name))
+            msg = msg.replace('${file}', str(record.pathname))
+            msg = msg.replace('${line}', str(record.lineno))
+            msg = msg.replace('${function}', str(record.funcName))
+            try:
+                from rospy import get_name
+                node_name = get_name()
+            except ImportError:
+                node_name = '<unknown_node_name>'
+            msg = msg.replace('${node}', node_name)
+            if self._get_time is not None and not self._is_wallclock():
+                t = self._get_time()
+            else:
+                t = time.time()
+            msg = msg.replace('${time}', '%f' % t)
+            msg += '\n'
+        else:
+            msg = '[%s] [WallTime: %f]' % (level, time.time())
+            if self._get_time is not None and not self._is_wallclock():
+                msg += ' [%f]' % self._get_time()
+            msg += ' %s\n' % record.getMessage()
         if record.levelno < logging.WARNING:
             self._write(sys.stdout, msg, color)
         else:

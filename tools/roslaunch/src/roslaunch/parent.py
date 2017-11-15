@@ -54,6 +54,8 @@ import roslaunch.pmon
 import roslaunch.server
 import roslaunch.xmlloader 
 
+from rosmaster.master_api import NUM_WORKERS
+
 #TODO: probably move process listener infrastructure into here
 
 # TODO: remove after wg_hardware_roslaunch has been updated
@@ -70,7 +72,8 @@ class ROSLaunchParent(object):
     This must be called from the Python Main thread due to signal registration.    
     """
 
-    def __init__(self, run_id, roslaunch_files, is_core=False, port=None, local_only=False, process_listeners=None, verbose=False, force_screen=False, is_rostest=False):
+    def __init__(self, run_id, roslaunch_files, is_core=False, port=None, local_only=False, process_listeners=None,
+            verbose=False, force_screen=False, is_rostest=False, roslaunch_strs=None, num_workers=NUM_WORKERS, timeout=None):
         """
         @param run_id: UUID of roslaunch session
         @type  run_id: str
@@ -93,6 +96,10 @@ class ROSLaunchParent(object):
         @param is_rostest bool: if True, this launch is a rostest
             instance. This affects validation checks.
         @type  is_rostest: bool
+        @param num_workers: If this is the core, the number of worker-threads to use.
+        @type num_workers: int
+        @param timeout: If this is the core, the socket-timeout to use.
+        @type timeout: Float or None
         @throws RLException
         """
         
@@ -101,11 +108,14 @@ class ROSLaunchParent(object):
         self.process_listeners = process_listeners
         
         self.roslaunch_files = roslaunch_files
+        self.roslaunch_strs = roslaunch_strs
         self.is_core = is_core
         self.is_rostest = is_rostest
         self.port = port
         self.local_only = local_only
         self.verbose = verbose
+        self.num_workers = num_workers
+        self.timeout = timeout
 
         # I don't think we should have to pass in so many options from
         # the outside into the roslaunch parent. One possibility is to
@@ -118,7 +128,8 @@ class ROSLaunchParent(object):
         self.config = self.runner = self.server = self.pm = self.remote_runner = None
 
     def _load_config(self):
-        self.config = roslaunch.config.load_config_default(self.roslaunch_files, self.port, verbose=self.verbose)
+        self.config = roslaunch.config.load_config_default(self.roslaunch_files, self.port,
+                roslaunch_strs=self.roslaunch_strs, verbose=self.verbose)
 
         # #2370 (I really want to move this logic outside of parent)
         if self.force_screen:
@@ -141,13 +152,13 @@ class ROSLaunchParent(object):
             raise RLException("pm is not initialized")
         if self.server is None:
             raise RLException("server is not initialized")
-        self.runner = roslaunch.launch.ROSLaunchRunner(self.run_id, self.config, server_uri=self.server.uri, pmon=self.pm, is_core=self.is_core, remote_runner=self.remote_runner, is_rostest=self.is_rostest)
+        self.runner = roslaunch.launch.ROSLaunchRunner(self.run_id, self.config, server_uri=self.server.uri, pmon=self.pm, is_core=self.is_core, remote_runner=self.remote_runner, is_rostest=self.is_rostest, num_workers=self.num_workers, timeout=self.timeout)
 
         # print runner info to user, put errors last to make the more visible
         if self.is_core:
-            print "ros_comm version %s"%(self.config.params['/rosversion'].value)
+            print("ros_comm version %s" % (self.config.params['/rosversion'].value))
             
-        print self.config.summary(local=self.remote_runner is None)
+        print(self.config.summary(local=self.remote_runner is None))
         if self.config:
             for err in self.config.config_errors:
                 printerrlog("WARNING: %s"%err)

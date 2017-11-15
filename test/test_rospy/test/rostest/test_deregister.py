@@ -34,11 +34,15 @@
 ## Integration test for empty services to test serializers
 ## and transport
 
+from __future__ import print_function
+
 PKG = 'test_rospy'
 
 import sys
 import time
 import unittest
+import gc
+import weakref
 
 import rospy
 import rostest
@@ -54,29 +58,33 @@ TIMEOUT = 10.0 #seconds
 _last_callback = None
 def callback(data):
     global _last_callback
-    print "message received", data.data
+    print("message received", data.data)
     _last_callback = data
 
-import xmlrpclib
+try:
+    from xmlrpc.client import ServerProxy
+except ImportError:
+    from xmlrpclib import ServerProxy
 
 class TestDeregister(unittest.TestCase):
         
     def test_unpublish(self):
-        node_proxy = xmlrpclib.ServerProxy(rospy.get_node_uri())
+        node_proxy = ServerProxy(rospy.get_node_uri())
         
         _, _, pubs = node_proxy.getPublications('/foo')
         pubs = [p for p in pubs if p[0] != '/rosout']
         self.assert_(not pubs, pubs)
         
-        print "Publishing ", PUBTOPIC
-        pub = rospy.Publisher(PUBTOPIC, String)
+        print("Publishing ", PUBTOPIC)
+        pub = rospy.Publisher(PUBTOPIC, String, queue_size=1)
+        impl = weakref.ref(pub.impl)
         topic = rospy.resolve_name(PUBTOPIC)
         _, _, pubs = node_proxy.getPublications('/foo')
         pubs = [p for p in pubs if p[0] != '/rosout']
         self.assertEquals([[topic, String._type]], pubs, "Pubs were %s"%pubs)
 
         # publish about 10 messages for fun
-        for i in xrange(0, 10):
+        for i in range(0, 10):
             pub.publish(String("hi [%s]"%i))
             time.sleep(0.1)
         
@@ -96,16 +104,19 @@ class TestDeregister(unittest.TestCase):
         n = rospy.get_caller_id()
         self.assert_(not rostest.is_publisher(topic, n), "publication is still active on master")
 
+        # verify that the impl was cleaned up
+        gc.collect()
+        self.assertIsNone(impl())
         
     def test_unsubscribe(self):
         global _last_callback
 
         uri = rospy.get_node_uri()
-        node_proxy = xmlrpclib.ServerProxy(uri)
+        node_proxy = ServerProxy(uri)
         _, _, subscriptions = node_proxy.getSubscriptions('/foo')
         self.assert_(not subscriptions, 'subscriptions present: %s'%str(subscriptions))
         
-        print "Subscribing to ", SUBTOPIC
+        print("Subscribing to ", SUBTOPIC)
         sub = rospy.Subscriber(SUBTOPIC, String, callback)
         topic = rospy.resolve_name(SUBTOPIC)
         _, _, subscriptions = node_proxy.getSubscriptions('/foo')
@@ -147,7 +158,7 @@ class TestDeregister(unittest.TestCase):
         srv = [s for s in srv if not s[0].startswith('/rosout/') and not s[0].endswith('/get_loggers') and not s[0].endswith('/set_logger_level')]
         self.failIf(srv, srv)
 
-        print "Creating service ", SERVICE
+        print("Creating service ", SERVICE)
         service = rospy.Service(SERVICE, EmptySrv, callback)
         # we currently cannot interrogate a node's services, have to rely on master
 

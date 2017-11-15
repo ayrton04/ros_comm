@@ -45,15 +45,16 @@ void StatisticsLogger::init(const SubscriptionCallbackHelperPtr& helper) {
   hasHeader_ = helper->hasHeader();
   param::param("/enable_statistics", enable_statistics, false);
   param::param("/statistics_window_min_elements", min_elements, 10);
-  param::param("/statistics_window_max_elements", min_elements, 100);
-  param::param("/statistics_window_min_size", min_elements, 4);
-  param::param("/statistics_window_max_size", max_elements, 64);
+  param::param("/statistics_window_max_elements", max_elements, 100);
+  param::param("/statistics_window_min_size", min_window, 4);
+  param::param("/statistics_window_max_size", max_window, 64);
 }
 
 void StatisticsLogger::callback(const boost::shared_ptr<M_string>& connection_header,
                                 const std::string& topic, const std::string& callerid, const SerializedMessage& m, const uint64_t& bytes_sent,
                                 const ros::Time& received_time, bool dropped)
 {
+  (void)connection_header;
   struct StatData stats;
 
   if (!enable_statistics)
@@ -74,6 +75,7 @@ void StatisticsLogger::callback(const boost::shared_ptr<M_string>& connection_he
     // this is the first time, we received something on this connection
     stats.stat_bytes_last = 0;
     stats.dropped_msgs = 0;
+    stats.last_seq = 0;
     stats.last_publish = ros::Time::now();
     map_[callerid] = stats;
   }
@@ -120,6 +122,7 @@ void StatisticsLogger::callback(const boost::shared_ptr<M_string>& connection_he
     msg.node_sub = ros::this_node::getName();
     msg.window_start = window_start;
     msg.window_stop = received_time;
+    msg.delivered_msgs = stats.arrival_time_list.size();
     msg.dropped_msgs = stats.dropped_msgs;
     msg.traffic = bytes_sent - stats.stat_bytes_last;
 
@@ -142,13 +145,26 @@ void StatisticsLogger::callback(const boost::shared_ptr<M_string>& connection_he
 
       msg.stamp_age_mean *= 1.0 / stats.age_list.size();
 
-      msg.stamp_age_stddev = ros::Duration(0);
+      double stamp_age_variance = 0.0;
       for(std::list<ros::Duration>::iterator it = stats.age_list.begin(); it != stats.age_list.end(); it++)
       {
         ros::Duration t = msg.stamp_age_mean - *it;
-        msg.stamp_age_stddev += ros::Duration(t.toSec() * t.toSec());
+        stamp_age_variance += t.toSec() * t.toSec();
       }
-      msg.stamp_age_stddev = ros::Duration(sqrt(msg.stamp_age_stddev.toSec() / stats.age_list.size()));
+      double stamp_age_stddev = sqrt(stamp_age_variance / stats.age_list.size());
+      try
+      {
+        msg.stamp_age_stddev = ros::Duration(stamp_age_stddev);
+      }
+      catch(std::runtime_error& e)
+      {
+        msg.stamp_age_stddev = ros::Duration(0);
+        ROS_WARN_STREAM("Error updating stamp_age_stddev for topic [" << topic << "]"
+          << " from node [" << callerid << "],"
+          << " likely due to the time between the mean stamp age and this message being exceptionally large."
+          << " Exception was: " << e.what());
+        ROS_DEBUG_STREAM("Mean stamp age was: " << msg.stamp_age_mean << " - std_dev of: " << stamp_age_stddev);
+      }
 
     }
     else
@@ -217,11 +233,11 @@ void StatisticsLogger::callback(const boost::shared_ptr<M_string>& connection_he
     pub_.publish(msg);
 
     // dynamic window resizing
-    if (stats.arrival_time_list.size() > max_elements && pub_frequency_ * 2 <= max_window)
+    if (stats.arrival_time_list.size() > static_cast<size_t>(max_elements) && pub_frequency_ * 2 <= max_window)
     {
       pub_frequency_ *= 2;
     }
-    if (stats.arrival_time_list.size() < min_elements && pub_frequency_ / 2 >= min_window)
+    if (stats.arrival_time_list.size() < static_cast<size_t>(min_elements) && pub_frequency_ / 2 >= min_window)
     {
       pub_frequency_ /= 2;
     }

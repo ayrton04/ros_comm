@@ -65,6 +65,13 @@ def handle_split(option, opt_str, value, parser):
         print("Use of \"--split <MAX_SIZE>\" has been deprecated.  Please use --split --size <MAX_SIZE> or --split --duration <MAX_DURATION>", file=sys.stderr)
         parser.values.size = int(parser.rargs.pop(0))
 
+
+def _stop_process(signum, frame, old_handler, process):
+    process.terminate()
+    if old_handler:
+        old_handler(signum, frame)
+
+
 def record_cmd(argv):
     parser = optparse.OptionParser(usage="rosbag record TOPIC1 [TOPIC2 TOPIC3 ...]",
                                    description="Record a bag file with the contents of specified topics.",
@@ -76,8 +83,8 @@ def record_cmd(argv):
     parser.add_option("-q", "--quiet",         dest="quiet",         default=False, action="store_true",          help="suppress console output")
     parser.add_option("-o", "--output-prefix", dest="prefix",        default=None,  action="store",               help="prepend PREFIX to beginning of bag name (name will always end with date stamp)")
     parser.add_option("-O", "--output-name",   dest="name",          default=None,  action="store",               help="record to bag with name NAME.bag")
-    parser.add_option(      "--split",         dest="split",         default=False, callback=handle_split, action="callback",    help="split the bag when maximum size or duariton is reached")
-    parser.add_option(      "--size",          dest="size",                         type='int',   action="store", help="record a bag of maximum size SIZE", metavar="SIZE")
+    parser.add_option(      "--split",         dest="split",         default=False, callback=handle_split, action="callback",    help="split the bag when maximum size or duration is reached")
+    parser.add_option(      "--size",          dest="size",                         type='int',   action="store", help="record a bag of maximum size SIZE MB. (Default: infinite)", metavar="SIZE")
     parser.add_option(      "--duration",      dest="duration",                     type='string',action="store", help="record a bag of maximum duration DURATION in seconds, unless 'm', or 'h' is appended.", metavar="DURATION")
     parser.add_option("-b", "--buffsize",      dest="buffsize",      default=256,   type='int',   action="store", help="use an internal buffer of SIZE MB (Default: %default, 0 = infinite)", metavar="SIZE")
     parser.add_option("--chunksize",           dest="chunksize",     default=768,   type='int',   action="store", help="Advanced. Record to chunks of SIZE KB (Default: %default)", metavar="SIZE")
@@ -121,9 +128,15 @@ def record_cmd(argv):
 
     cmd.extend(args)
 
+    old_handler = signal.signal(
+        signal.SIGTERM,
+        lambda signum, frame: _stop_process(signum, frame, old_handler, process)
+    )
     # Better way of handling it than os.execv
     # This makes sure stdin handles are passed to the process.
-    subprocess.call(cmd)
+    process = subprocess.Popen(cmd)
+    process.wait()
+
 
 def info_cmd(argv):
     parser = optparse.OptionParser(usage='rosbag info [options] BAGFILE1 [BAGFILE2 BAGFILE3 ...]',
@@ -172,9 +185,22 @@ def handle_topics(option, opt_str, value, parser):
     del parser.rargs[:len(topics)]
 
 
+def handle_pause_topics(option, opt_str, value, parser):
+    pause_topics = []
+    for arg in parser.rargs:
+        if arg[:2] == "--" and len(arg) > 2:
+            break
+        if arg[:1] == "-" and len(arg) > 1:
+            break
+        pause_topics.append(arg)
+    parser.values.pause_topics.extend(pause_topics)
+    del parser.rargs[:len(pause_topics)]
+
+
 def play_cmd(argv):
     parser = optparse.OptionParser(usage="rosbag play BAGFILE1 [BAGFILE2 BAGFILE3 ...]",
                                    description="Play back the contents of one or more bag files in a time-synchronized fashion.")
+    parser.add_option("-p", "--prefix",       dest="prefix",     default='',    type='str',          help="prefix all output topics")
     parser.add_option("-q", "--quiet",        dest="quiet",      default=False, action="store_true", help="suppress console output")
     parser.add_option("-i", "--immediate",    dest="immediate",  default=False, action="store_true", help="play back all messages without waiting")
     parser.add_option("--pause",              dest="pause",      default=False, action="store_true", help="start in paused mode")
@@ -190,9 +216,13 @@ def play_cmd(argv):
     parser.add_option("-k", "--keep-alive",   dest="keep_alive", default=False, action="store_true", help="keep alive past end of bag (useful for publishing latched topics)")
     parser.add_option("--try-future-version", dest="try_future", default=False, action="store_true", help="still try to open a bag file, even if the version number is not known to the player")
     parser.add_option("--topics", dest="topics", default=[],  callback=handle_topics, action="callback", help="topics to play back")
+    parser.add_option("--pause-topics", dest="pause_topics", default=[],  callback=handle_pause_topics, action="callback", help="topics to pause on during playback")
     parser.add_option("--bags",  help="bags files to play back from")
 
     (options, args) = parser.parse_args(argv)
+
+    if options.bags:
+        args.append(options.bags)
 
     if len(args) == 0:
         parser.error('You must specify at least 1 bag file to play back.')
@@ -201,6 +231,9 @@ def play_cmd(argv):
     if not playpath:
         parser.error("Cannot find rosbag/play executable")
     cmd = [playpath[0]]
+
+    if options.prefix:
+        cmd.extend(["--prefix", str(options.prefix)])
 
     if options.quiet:      cmd.extend(["--quiet"])
     if options.pause:      cmd.extend(["--pause"])
@@ -222,12 +255,26 @@ def play_cmd(argv):
         cmd.extend(['--skip-empty', str(options.skip_empty)])
 
     if options.topics:
-        cmd.extend(['--topics'] + options.topics + ['--bags'])
+        cmd.extend(['--topics'] + options.topics)
+
+    if options.pause_topics:
+        cmd.extend(['--pause-topics'] + options.pause_topics)
+
+    # prevent bag files to be passed as --topics or --pause-topics
+    if options.topics or options.pause_topics:
+        cmd.extend(['--bags'])
 
     cmd.extend(args)
+
+    old_handler = signal.signal(
+        signal.SIGTERM,
+        lambda signum, frame: _stop_process(signum, frame, old_handler, process)
+    )
     # Better way of handling it than os.execv
     # This makes sure stdin handles are passed to the process.
-    subprocess.call(cmd)
+    process = subprocess.Popen(cmd)
+    process.wait()
+
 
 def filter_cmd(argv):
     def expr_eval(expr):
@@ -277,7 +324,7 @@ The following variables are available:
         return
 
     try:
-        meter = ProgressMeter(outbag_filename, inbag.size)
+        meter = ProgressMeter(outbag_filename, inbag._uncompressed_size)
         total_bytes = 0
     
         if options.verbose_pattern:

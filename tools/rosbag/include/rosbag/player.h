@@ -71,6 +71,7 @@ struct ROSBAG_DECL PlayerOptions
 
     void check();
 
+    std::string prefix;
     bool     quiet;
     bool     start_paused;
     bool     at_once;
@@ -90,6 +91,7 @@ struct ROSBAG_DECL PlayerOptions
 
     std::vector<std::string> bags;
     std::vector<std::string> topics;
+    std::vector<std::string> pause_topics;
 };
 
 
@@ -182,6 +184,8 @@ private:
     ros::NodeHandle node_handle_;
 
     bool paused_;
+
+    bool pause_for_topics_;
 
     ros::WallTime paused_time_;
 

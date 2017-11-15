@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(message_filters)
+
+if(NOT WIN32)
+  set_directory_properties(PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
+endif()
+
 find_package(catkin REQUIRED COMPONENTS roscpp xmlrpcpp rosconsole)
 catkin_package(
   INCLUDE_DIRS include
@@ -78,4 +83,8 @@ if(CATKIN_ENABLE_TESTING)
   if(TARGET ${PROJECT_NAME}-test_subscriber)
     target_link_libraries(${PROJECT_NAME}-test_subscriber message_filters)
   endif()
+
+  # Unit test of the approximate synchronizer
+  catkin_add_nosetests(test/test_approxsync.py)
+  catkin_add_nosetests(test/test_message_filters_cache.py)
 endif()

@@ -351,8 +351,17 @@ class _TopicImpl(object):
             c.close()
         except:
             pass
+        # while c might be a rospy.impl.tcpros_base.TCPROSTransport instance
+        # connections might only contain the rospy.impl.tcpros_pubsub.QueuedConnection proxy
+        # finding the "right" connection is more difficult then
         if c in connections:
             connections.remove(c)
+        # therefore additionally check for fileno equality if available
+        elif c.fileno():
+            matching_connections = [
+                conn for conn in connections if conn.fileno() == c.fileno()]
+            if len(matching_connections) == 1:
+                connections.remove(matching_connections[0])
 
     def add_connection(self, c):
         """
@@ -365,6 +374,15 @@ class _TopicImpl(object):
         """
         rospyinfo("topic[%s] adding connection to [%s], count %s"%(self.resolved_name, c.endpoint_id, len(self.connections)))
         with self.c_lock:
+            # protect against race condition adding connection to closed sub
+            if self.closed:
+                rospyerr(
+                    "ERROR: Race condition failure adding connection to closed subscriber\n"
+                    "If you run into this please comment on "
+                    "https://github.com/ros/ros_comm/issues/544"
+                )
+                return False
+
             # c_lock is to make add_connection thread-safe, but we
             # still make a copy of self.connections so that the rest of the
             # code can use self.connections in an unlocked manner
@@ -408,7 +426,16 @@ class _TopicImpl(object):
             self.connections = new_connections
 
             # connections make a callback when closed
-            c.set_cleanup_callback(self.remove_connection)
+            # don't clobber an existing callback
+            if not c.cleanup_cb:
+                c.set_cleanup_callback(self.remove_connection)
+            else:
+                previous_callback = c.cleanup_cb
+                new_callback = self.remove_connection
+                def cleanup_cb_wrapper(s):
+                    new_callback(s)
+                    previous_callback(s)
+                c.set_cleanup_callback(cleanup_cb_wrapper)
             
             return True
 
@@ -476,7 +503,7 @@ class Subscriber(Topic):
           the callback_args as a second argument, i.e. fn(data,
           callback_args).  NOTE: Additional callbacks can be added using
           add_callback().
-        @type  callback: str
+        @type  callback: fn(msg, cb_args)
         @param callback_args: additional arguments to pass to the
           callback. This is useful when you wish to reuse the same
           callback for multiple subscriptions.
@@ -560,7 +587,9 @@ class _SubscriberImpl(_TopicImpl):
         self.queue_size = None
         self.buff_size = DEFAULT_BUFF_SIZE
         self.tcp_nodelay = False
-        self.statistics_logger = SubscriberStatisticsLogger(self);
+        self.statistics_logger = SubscriberStatisticsLogger(self) \
+            if SubscriberStatisticsLogger.is_enabled() \
+            else None
 
     def close(self):
         """close I/O and release resources"""
@@ -568,6 +597,9 @@ class _SubscriberImpl(_TopicImpl):
         if self.callbacks:
             del self.callbacks[:]
             self.callbacks = None
+        if self.statistics_logger:
+            self.statistics_logger.shutdown()
+            self.statistics_logger = None
         
     def set_tcp_nodelay(self, tcp_nodelay):
         """
@@ -630,7 +662,7 @@ class _SubscriberImpl(_TopicImpl):
         @param cb: callback function to invoke with message data
           instance, i.e. fn(data). If callback args is set, they will
           be passed in as the second argument.
-        @type  cb: fn(msg)
+        @type  cb: fn(msg, cb_args)
         @param cb_cargs: additional arguments to pass to callback
         @type  cb_cargs: Any
         """
@@ -651,8 +683,8 @@ class _SubscriberImpl(_TopicImpl):
     def remove_callback(self, cb, cb_args):
         """
         Unregister a message callback.
-        @param cb: callback function 
-        @type  cb: fn(msg)
+        @param cb: callback function
+        @type  cb: fn(msg, cb_args)
         @param cb_cargs: additional arguments associated with callback
         @type  cb_cargs: Any
         @raise KeyError: if no matching callback
@@ -701,7 +733,8 @@ class _SubscriberImpl(_TopicImpl):
         # save reference to avoid lock
         callbacks = self.callbacks
         for msg in msgs:
-            self.statistics_logger.callback(msg, connection.callerid_pub, connection.stat_bytes)
+            if self.statistics_logger:
+                self.statistics_logger.callback(msg, connection.callerid_pub, connection.stat_bytes)
             for cb, cb_args in callbacks:
                 self._invoke_callback(msg, cb, cb_args)
 
@@ -819,7 +852,7 @@ class Publisher(Topic):
             self.impl.publish(data)
         except genpy.SerializationError as e:
             # can't go to rospy.logerr(), b/c this could potentially recurse
-            _logger.error(traceback.format_exc(e))
+            _logger.error(traceback.format_exc())
             raise ROSSerializationException(str(e))
         finally:
             self.impl.release()            

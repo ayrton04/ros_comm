@@ -39,6 +39,7 @@ import time
 import unittest
 
 import rospkg
+from rospkg.environment import ROS_TEST_RESULTS_DIR
 import roslaunch
 import roslib.packages 
 
@@ -46,8 +47,6 @@ from rostest.rostestutil import createXMLRunner, printSummary, printRostestSumma
     xmlResultsFile, printlog, printlogerr
 from rostest.rostest_parent import ROSTestLaunchParent
 import rosunit.junitxml
-
-_DEFAULT_TEST_PORT = 22422
 
 # NOTE: ignoring Python style guide as unittest is sadly written with Java-like camel casing
 
@@ -94,7 +93,7 @@ def failRunner(testName, message):
         self.fail(message)
     return fn
     
-def rostestRunner(test, test_pkg):
+def rostestRunner(test, test_pkg, results_base_dir=None):
     """
     Test function generator that takes in a roslaunch Test object and
     returns a class instance method that runs the test. TestCase
@@ -123,7 +122,10 @@ def rostestRunner(test, test_pkg):
 
             #setup the test
             # - we pass in the output test_file name so we can scrape it
-            test_file = xmlResultsFile(test_pkg, test_name, False)
+            env = None
+            if results_base_dir:
+                env = {ROS_TEST_RESULTS_DIR: results_base_dir}
+            test_file = xmlResultsFile(test_pkg, test_name, False, env=env)
             if os.path.exists(test_file):
                 printlog("removing previous test results file [%s]", test_file)
                 os.remove(test_file)
@@ -192,7 +194,7 @@ def setUp(self):
     # new test_parent for each run. we are a bit inefficient as it would be possible to
     # reuse the roslaunch base infrastructure for each test, but the roslaunch code
     # is not abstracted well enough yet
-    self.test_parent = ROSTestLaunchParent(self.config, [self.test_file], port=_DEFAULT_TEST_PORT)
+    self.test_parent = ROSTestLaunchParent(self.config, [self.test_file], reuse_master=self.reuse_master, clear=self.clear)
     
     printlog("setup[%s] run_id[%s] starting", self.test_file, self.test_parent.run_id)
 
@@ -214,7 +216,7 @@ def tearDown(self):
         
     printlog("rostest teardown %s complete", self.test_file)
     
-def createUnitTest(pkg, test_file):
+def createUnitTest(pkg, test_file, reuse_master=False, clear=False, results_base_dir=None):
     """
     Unit test factory. Constructs a unittest class based on the roslaunch
 
@@ -224,11 +226,12 @@ def createUnitTest(pkg, test_file):
     @type  test_file: str
     """
     # parse the config to find the test files
-    config = roslaunch.parent.load_config_default([test_file], _DEFAULT_TEST_PORT)
+    config = roslaunch.parent.load_config_default([test_file], None)
 
     # pass in config to class as a property so that test_parent can be initialized
     classdict = { 'setUp': setUp, 'tearDown': tearDown, 'config': config,
-                  'test_parent': None, 'test_file': test_file }
+                  'test_parent': None, 'test_file': test_file,
+                  'reuse_master': reuse_master, 'clear': clear }
     
     # add in the tests
     testNames = []
@@ -249,7 +252,7 @@ def createUnitTest(pkg, test_file):
         elif testName in testNames:
             classdict[testName] = failDuplicateRunner(test.test_name)
         else:
-            classdict[testName] = rostestRunner(test, pkg)
+            classdict[testName] = rostestRunner(test, pkg, results_base_dir=results_base_dir)
             testNames.append(testName)
 
     # instantiate the TestCase instance with our magically-created tests

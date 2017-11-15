@@ -295,8 +295,8 @@ Publisher NodeHandle::advertise(AdvertiseOptions& ops)
     }
   }
 
-  SubscriberCallbacksPtr callbacks(new SubscriberCallbacks(ops.connect_cb, ops.disconnect_cb, 
-							   ops.tracked_object, ops.callback_queue));
+  SubscriberCallbacksPtr callbacks(boost::make_shared<SubscriberCallbacks>(ops.connect_cb, ops.disconnect_cb, 
+                                                                           ops.tracked_object, ops.callback_queue));
 
   if (TopicManager::instance()->advertise(ops, callbacks))
   {
@@ -592,6 +592,11 @@ bool NodeHandle::deleteParam(const std::string& key) const
   return param::del(resolveName(key));
 }
 
+bool NodeHandle::getParamNames(std::vector<std::string>& keys) const
+{
+  return param::getParamNames(keys);
+}
+
 bool NodeHandle::getParam(const std::string& key, XmlRpc::XmlRpcValue& v) const
 {
   return param::get(resolveName(key), v);
@@ -605,6 +610,11 @@ bool NodeHandle::getParam(const std::string& key, std::string& s) const
 bool NodeHandle::getParam(const std::string& key, double& d) const
 {
   return param::get(resolveName(key), d);
+}
+
+bool NodeHandle::getParam(const std::string& key, float& f) const
+{
+  return param::get(resolveName(key), f);
 }
 
 bool NodeHandle::getParam(const std::string& key, int& i) const
@@ -673,6 +683,11 @@ bool NodeHandle::getParamCached(const std::string& key, std::string& s) const
 bool NodeHandle::getParamCached(const std::string& key, double& d) const
 {
   return param::getCached(resolveName(key), d);
+}
+
+bool NodeHandle::getParamCached(const std::string& key, float& f) const
+{
+  return param::getCached(resolveName(key), f);
 }
 
 bool NodeHandle::getParamCached(const std::string& key, int& i) const

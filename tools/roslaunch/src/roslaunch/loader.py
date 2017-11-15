@@ -73,7 +73,7 @@ def convert_value(value, type_):
                 return float(value)
             else:
                 return int(value)
-        except ValueError, e:
+        except ValueError as e:
             pass
         #bool
         lval = value.lower()
@@ -112,7 +112,7 @@ def process_include_args(context):
             raise LoadException("include args must have declared values")
         
     # save args that were passed so we can check for unused args in post-processing
-    context.args_passed = arg_dict.keys()[:]
+    context.args_passed = list(arg_dict.keys())
     # clear arg declarations so included file can re-declare
     context.arg_names = []
 
@@ -172,6 +172,8 @@ class LoaderContext(object):
         self.arg_names = arg_names or []
         # special scoped resolve dict for processing in <include> tag
         self.include_resolve_dict = include_resolve_dict or None
+        # when this context was created via include, was pass_all_args set?
+        self.pass_all_args = False
 
     def add_param(self, p):
         """
@@ -214,8 +216,11 @@ class LoaderContext(object):
         Add 'arg' to existing context. Args are only valid for their immediate context.
         """
         if name in self.arg_names:
-            raise LoadException("arg '%s' has already been declared"%name)
-        self.arg_names.append(name)
+            # Ignore the duplication if pass_all_args was set
+            if not self.pass_all_args:
+                raise LoadException("arg '%s' has already been declared"%name)
+        else:
+            self.arg_names.append(name)
 
         resolve_dict = self.resolve_dict if self.include_resolve_dict is None else self.include_resolve_dict
 
@@ -228,7 +233,9 @@ class LoaderContext(object):
         if value is not None:
             # value is set, error if declared in our arg dict as args
             # with set values are constant/grounded.
-            if name in arg_dict:
+            # But don't error if pass_all_args was used to include this
+            # context; rather just override the passed-in value.
+            if name in arg_dict and not self.pass_all_args:
                 raise LoadException("cannot override arg '%s', which has already been set"%name)
             arg_dict[name] = value
         elif default is not None:
@@ -346,7 +353,7 @@ class Loader(object):
 
         if type(param_value) == dict:
             # unroll params
-            for k, v in param_value.iteritems():
+            for k, v in param_value.items():
                 self.add_param(ros_config, ns_join(param_name, k), v, verbose=verbose)
         else:
             ros_config.add_param(Param(param_name, param_value), verbose=verbose)
@@ -403,12 +410,12 @@ class Loader(object):
                 # for our representation of empty.
                 if data is None:
                     data = {}
-            except yaml.MarkedYAMLError, e:
+            except yaml.MarkedYAMLError as e:
                 if not file_: 
                     raise ValueError("Error within YAML block:\n\t%s\n\nYAML is:\n%s"%(str(e), text))
                 else:
                     raise ValueError("file %s contains invalid YAML:\n%s"%(file_, str(e)))
-            except Exception, e:
+            except Exception as e:
                 if not file_:
                     raise ValueError("invalid YAML: %s\n\nYAML is:\n%s"%(str(e), text))
                 else:
@@ -463,22 +470,28 @@ class Loader(object):
             with open(textfile, 'r') as f:
                 return f.read()
         elif binfile is not None:
-            import xmlrpclib
+            try:
+                from xmlrpc.client import Binary
+            except ImportError:
+                from xmlrpclib import Binary
             with open(binfile, 'rb') as f:
-                return xmlrpclib.Binary(f.read())
+                return Binary(f.read())
         elif command is not None:
-            if type(command) == unicode:
-                command = command.encode('UTF-8') #attempt to force to string for shlex/subprocess
+            try:
+                if type(command) == unicode:
+                    command = command.encode('UTF-8') #attempt to force to string for shlex/subprocess
+            except NameError:
+                pass
             if verbose:
-                print "... executing command param [%s]"%command
+                print("... executing command param [%s]" % command)
             import subprocess, shlex #shlex rocks
             try:
                 p = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
                 c_value = p.communicate()[0]
                 if p.returncode != 0:
                     raise ValueError("Cannot load command parameter [%s]: command [%s] returned with code [%s]"%(name, command, p.returncode))
-            except OSError, (errno, strerr):
-                if errno == 2:
+            except OSError as e:
+                if e.errno == 2:
                     raise ValueError("Cannot load command parameter [%s]: no such command [%s]"%(name, command))
                 raise
             if c_value is None:

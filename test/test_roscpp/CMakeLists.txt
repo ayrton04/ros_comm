@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 2.8.3)
 
 project(test_roscpp)
 
+if(NOT WIN32)
+  set_directory_properties(PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")
+endif()
+
 find_package(catkin REQUIRED COMPONENTS
   message_generation roscpp rostest rosunit std_srvs
 )
@@ -81,7 +85,6 @@ endif()
 
 catkin_package(
   CATKIN_DEPENDS message_runtime rosconsole rosgraph_msgs std_msgs xmlrpcpp
-  DEPENDS Boost
 )
 
 if(CATKIN_ENABLE_TESTING)

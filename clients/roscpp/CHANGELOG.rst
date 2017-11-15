@@ -2,6 +2,91 @@
 Changelog for package roscpp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.21 (2017-03-06)
+--------------------
+* fix UDP block number when EAGAIN or EWOULDBLOCK (`#957 <https://github.com/ros/ros_comm/issues/957>`_)
+* improve stacktrace for exceptions thrown in callbacks (`#811 <https://github.com/ros/ros_comm/pull/811>`_)
+
+1.11.20 (2016-06-27)
+--------------------
+* fix segfault if connection fails (`#807 <https://github.com/ros/ros_comm/pull/807>`_)
+
+1.11.19 (2016-04-18)
+--------------------
+* use directory specific compiler flags (`#785 <https://github.com/ros/ros_comm/pull/785>`_)
+
+1.11.18 (2016-03-17)
+--------------------
+* fix CMake warning about non-existing targets
+
+1.11.17 (2016-03-11)
+--------------------
+* fix order of argument in SubscriberLink interface to match actual implemenation (`#701 <https://github.com/ros/ros_comm/issues/701>`_)
+* add method for getting all the parameters from the parameter server as implemented in the rospy client (`#739 <https://github.com/ros/ros_comm/issues/739>`_)
+* use boost::make_shared instead of new for constructing boost::shared_ptr (`#740 <https://github.com/ros/ros_comm/issues/740>`_)
+* fix max elements param for statistics window (`#750 <https://github.com/ros/ros_comm/issues/750>`_)
+* improve NodeHandle constructor documentation (`#692 <https://github.com/ros/ros_comm/issues/692>`_)
+
+1.11.16 (2015-11-09)
+--------------------
+* add getROSArg function (`#694 <https://github.com/ros/ros_comm/pull/694>`_)
+
+1.11.15 (2015-10-13)
+--------------------
+* fix crash in onRetryTimer() callback (`#577 <https://github.com/ros/ros_comm/issues/577>`_)
+
+1.11.14 (2015-09-19)
+--------------------
+* add optional reset argument to Timer::setPeriod() (`#590 <https://github.com/ros/ros_comm/issues/590>`_)
+* add getParam() and getParamCached() for float (`#621 <https://github.com/ros/ros_comm/issues/621>`_, `#623 <https://github.com/ros/ros_comm/issues/623>`_)
+* use explicit bool cast to compile with C++11 (`#632 <https://github.com/ros/ros_comm/pull/632>`_)
+
+1.11.13 (2015-04-28)
+--------------------
+
+1.11.12 (2015-04-27)
+--------------------
+
+1.11.11 (2015-04-16)
+--------------------
+* fix memory leak in transport constructor (`#570 <https://github.com/ros/ros_comm/pull/570>`_)
+* fix computation of stddev in statistics (`#556 <https://github.com/ros/ros_comm/pull/556>`_)
+* fix empty connection header topic (`#543 <https://github.com/ros/ros_comm/issues/543>`_)
+* alternative API to get parameter values (`#592 <https://github.com/ros/ros_comm/pull/592>`_)
+* add getCached() for float parameters (`#584 <https://github.com/ros/ros_comm/pull/584>`_)
+
+1.11.10 (2014-12-22)
+--------------------
+* fix various defects reported by coverity
+* fix comment (`#529 <https://github.com/ros/ros_comm/issues/529>`_)
+* improve Android support (`#518 <https://github.com/ros/ros_comm/pull/518>`_)
+
+1.11.9 (2014-08-18)
+-------------------
+* add accessor to expose whether service is persistent (`#489 <https://github.com/ros/ros_comm/issues/489>`_)
+* populate delivered_msgs field of TopicStatistics message (`#486 <https://github.com/ros/ros_comm/issues/486>`_)
+
+1.11.8 (2014-08-04)
+-------------------
+* fix C++11 compatibility issue (`#483 <https://github.com/ros/ros_comm/issues/483>`_)
+
+1.11.7 (2014-07-18)
+-------------------
+* fix segfault due to accessing a NULL pointer for some network interfaces (`#465 <https://github.com/ros/ros_comm/issues/465>`_) (regression from 1.11.6)
+
+1.11.6 (2014-07-10)
+-------------------
+* check ROS_HOSTNAME for localhost / ROS_IP for 127./::1 and prevent connections from other hosts in that case (`#452 <https://github.com/ros/ros_comm/issues/452>`_)
+
+1.11.5 (2014-06-24)
+-------------------
+* improve handling dropped connections (`#434 <https://github.com/ros/ros_comm/issues/434>`_)
+* add header needed for Android (`#441 <https://github.com/ros/ros_comm/issues/441>`_)
+* fix typo for parameter used for statistics (`#448 <https://github.com/ros/ros_comm/issues/448>`_)
+
+1.11.4 (2014-06-16)
+-------------------
+
 1.11.3 (2014-05-21)
 -------------------
 
@@ -93,7 +178,7 @@ Changelog for package roscpp
 * allow sending data exceeding 2GB in chunks (`#4049 <https://code.ros.org/trac/ros/ticket/4049>`_)
 * update getParam() doc (`#1460 <https://code.ros.org/trac/ros/ticket/1460>`_)
 * add param::get(float) (`#3754 <https://code.ros.org/trac/ros/ticket/3754>`_)
-* update inactive assert when publishing message with md5sum *, update related tests (`#3714 <https://code.ros.org/trac/ros/ticket/3714>`_)
+* update inactive assert when publishing message with md5sum "*", update related tests (`#3714 <https://code.ros.org/trac/ros/ticket/3714>`_)
 * fix ros master retry timeout (`#4024 <https://code.ros.org/trac/ros/ticket/4024>`_)
 * fix inactive assert when publishing message with wrong type (`#3714 <https://code.ros.org/trac/ros/ticket/3714>`_)
 

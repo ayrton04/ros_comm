@@ -53,7 +53,10 @@ import os
 import re
 import sys
 import socket
-import xmlrpclib
+try:
+    from xmlrpc.client import Binary
+except ImportError:
+    from xmlrpclib import Binary
 
 from optparse import OptionParser
 
@@ -91,10 +94,10 @@ def construct_yaml_binary(loader, node):
     xmlrpclib.Binary container instead of straight string
     representation.
     """
-    return xmlrpclib.Binary(loader.construct_yaml_binary(node))
+    return Binary(loader.construct_yaml_binary(node))
         
 # register the (de)serializers with pyyaml
-yaml.add_representer(xmlrpclib.Binary,represent_xml_binary)
+yaml.add_representer(Binary,represent_xml_binary)
 yaml.add_constructor(u'tag:yaml.org,2002:binary', construct_yaml_binary)
 
 def construct_angle_radians(loader, node):
@@ -137,7 +140,7 @@ def print_params(params, ns):
     Print contents of param dictionary to screen
     """
     if type(params) == dict:
-        for k, v in params.iteritems():
+        for k, v in params.items():
             if type(v) == dict:
                 print_params(v, ns_join(ns, k))
             else:
@@ -157,15 +160,18 @@ def load_file(filename, default_namespace=None, verbose=False):
       corresponding namespaces for each YAML document in the file
     :raises: :exc:`RosParamException`: if unable to load contents of filename
     """
-    if not os.path.isfile(filename):
-        raise RosParamException("file [%s] does not exist"%filename)
-    if verbose:
-        print("reading parameters from [%s]"%filename)
-    f = open(filename, 'r')
-    try:
+    if not filename or filename == '-':
+        f = sys.stdin
+        if verbose:
+            print("reading parameters from stdin")
         return load_str(f.read(), filename, default_namespace=default_namespace, verbose=verbose)
-    finally:
-        f.close()
+    else:
+        if not os.path.isfile(filename):
+            raise RosParamException("file [%s] does not exist"%filename)
+        if verbose:
+            print("reading parameters from [%s]"%filename)
+        with open(filename, 'r') as f:
+            return load_str(f.read(), filename, default_namespace=default_namespace, verbose=verbose)
         
 def load_str(str, filename, default_namespace=None, verbose=False):
     """
@@ -216,7 +222,7 @@ def _pretty_print(value, indent=''):
     :param value: value to print
     :param indent: indent level, used for recursive calls, ``str``
     """
-    keys = value.keys()
+    keys = list(value.keys())
     keys.sort()
     for k in keys:
         v = value[k]
@@ -290,11 +296,15 @@ def dump_params(filename, param, verbose=False):
     tree = get_param(param)
     if verbose:
         print_params(tree, param)
-    f = open(filename, 'w')
-    try:
+    if not filename:
+        f = sys.stdout
         yaml.dump(tree, f)
-    finally:
-        f.close()
+    else:
+        f = open(filename, 'w')
+        try:
+            yaml.dump(tree, f)
+        finally:
+            f.close()
 
 
 def delete_param(param, verbose=False):
@@ -332,16 +342,21 @@ def set_param_raw(param, value, verbose=False):
     if type(value) == dict:
         # #1098 changing dictionary behavior to be an update, rather
         # than replace behavior.
-        for k, v in value.iteritems():
+        for k, v in value.items():
             # dictionary keys must be non-unicode strings
             if isinstance(k, str):
                 set_param_raw(ns_join(param, k), v, verbose=verbose)
             else:
                 raise RosParamException("YAML dictionaries must have string keys. Invalid dictionary is:\n%s"%value)
     else:
-        if type(value) == long:
-            if value > sys.maxint:
-                raise RosParamException("Overflow: Parameter Server integers must be 32-bit signed integers:\n\t-%s <= value <= %s"%(sys.maxint-1, sys.maxint))
+        try:
+            expected_type = long
+        except NameError :
+            expected_type = int
+      
+        if type(value) == expected_type:
+            if value > sys.maxsize:
+                raise RosParamException("Overflow: Parameter Server integers must be 32-bit signed integers:\n\t-%s <= value <= %s"%(maxint - 1, maxint))
             
         try:
             get_param_server().setParam(param, value)
@@ -415,9 +430,7 @@ def _rosparam_cmd_get_dump(cmd, argv):
     ns = ''
     
     if len(args) == 0:
-        if cmd == 'dump':
-            parser.error("invalid arguments. Please specify a file name")
-        elif cmd == 'get':
+        if cmd == 'get':
             parser.error("invalid arguments. Please specify a parameter name")
     elif len(args) == 1:
         arg = args[0]
@@ -483,15 +496,17 @@ def _rosparam_cmd_set_load(cmd, argv):
 
     parser.add_option("-v", dest="verbose", default=False,
                       action="store_true", help="turn on verbose output")
-    options, args = _set_optparse_neg_args(parser, argv)
     if cmd == 'set':
+        options, args = _set_optparse_neg_args(parser, argv)
         if options.text_file and options.bin_file:
             parser.error("you may only specify one of --textfile or --binfile")
+    else:
+        options, args = parser.parse_args(argv[2:])
 
     arg2 = None
     if len(args) == 0:
         if cmd == 'load':
-            parser.error("invalid arguments. Please specify a file name")
+            parser.error("invalid arguments. Please specify a file name or - for stdin")
         elif cmd == 'set':
             parser.error("invalid arguments. Please specify a parameter name")
     elif len(args) == 1:
@@ -514,9 +529,8 @@ def _rosparam_cmd_set_load(cmd, argv):
                 arg2 = f.read()
             set_param_raw(name, arg2, verbose=options.verbose) 
         elif options.bin_file:
-            import xmlrpclib
             with open(options.bin_file, 'rb') as f:
-                arg2 = xmlrpclib.Binary(f.read())
+                arg2 = Binary(f.read())
             set_param_raw(name, arg2, verbose=options.verbose)                
         else:
             # #2237: the empty string is really hard to specify on the

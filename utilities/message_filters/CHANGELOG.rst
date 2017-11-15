@@ -2,6 +2,67 @@
 Changelog for package message_filters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.21 (2017-03-06)
+--------------------
+
+1.11.20 (2016-06-27)
+--------------------
+
+1.11.19 (2016-04-18)
+--------------------
+* use directory specific compiler flags (`#785 <https://github.com/ros/ros_comm/pull/785>`_)
+
+1.11.18 (2016-03-17)
+--------------------
+* fix compiler warnings
+
+1.11.17 (2016-03-11)
+--------------------
+* use boost::make_shared instead of new for constructing boost::shared_ptr (`#740 <https://github.com/ros/ros_comm/issues/740>`_)
+* add __getattr_\_ to handle sub in message_filters as standard one (`#700 <https://github.com/ros/ros_comm/pull/700>`_)
+
+1.11.16 (2015-11-09)
+--------------------
+
+1.11.15 (2015-10-13)
+--------------------
+* add unregister() method to message_filter.Subscriber (`#683 <https://github.com/ros/ros_comm/pull/683>`_)
+
+1.11.14 (2015-09-19)
+--------------------
+
+1.11.13 (2015-04-28)
+--------------------
+
+1.11.12 (2015-04-27)
+--------------------
+
+1.11.11 (2015-04-16)
+--------------------
+* implement message filter cache in Python (`#599 <https://github.com/ros/ros_comm/pull/599>`_)
+
+1.11.10 (2014-12-22)
+--------------------
+
+1.11.9 (2014-08-18)
+-------------------
+
+1.11.8 (2014-08-04)
+-------------------
+
+1.11.7 (2014-07-18)
+-------------------
+
+1.11.6 (2014-07-10)
+-------------------
+
+1.11.5 (2014-06-24)
+-------------------
+
+1.11.4 (2014-06-16)
+-------------------
+* add approximate Python time synchronizer (used to be in camera_calibration) (`#424 <https://github.com/ros/ros_comm/issues/424>`_)
+
 1.11.3 (2014-05-21)
 -------------------
 
@@ -52,7 +113,7 @@ Changelog for package message_filters
 
 1.9.45 (2013-06-06)
 -------------------
-* fix template syntax for signal_.template addCallback() to work with Intel compiler
+* fix template syntax for signal\_.template addCallback() to work with Intel compiler
 
 1.9.44 (2013-03-21)
 -------------------

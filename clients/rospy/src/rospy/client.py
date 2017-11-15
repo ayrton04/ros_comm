@@ -41,6 +41,7 @@ import os
 import socket
 import struct
 import sys
+from threading import Lock
 import time
 import random
 import yaml
@@ -260,10 +261,7 @@ def init_node(name, argv=None, anonymous=False, log_level=None, disable_rostime=
     # this test can be eliminated once we change from warning to error in the next check
     if rosgraph.names.SEP in name:
         raise ValueError("namespaces are not allowed in node names")
-    if not rosgraph.names.is_legal_base_name(name):
-        import warnings
-        warnings.warn("'%s' is not a legal ROS base name. This may cause problems with other ROS tools"%name, stacklevel=2)
-    
+
     global _init_node_args
 
     # #972: allow duplicate init_node args if calls are identical
@@ -288,8 +286,7 @@ def init_node(name, argv=None, anonymous=False, log_level=None, disable_rostime=
     # check for name override
     mappings = rospy.names.get_mappings()
     if '__name' in mappings:
-        # use rosgraph version of resolve_name to avoid remapping
-        name = rosgraph.names.resolve_name(mappings['__name'], rospy.core.get_caller_id())
+        name = mappings['__name']
         if anonymous:
             logdebug("[%s] WARNING: due to __name setting, anonymous setting is being changed to false"%name)
             anonymous = False
@@ -299,7 +296,13 @@ def init_node(name, argv=None, anonymous=False, log_level=None, disable_rostime=
         # hostname as that is not guaranteed to be a legal ROS name
         name = "%s_%s_%s"%(name, os.getpid(), int(time.time()*1000))
 
-    resolved_node_name = rospy.names.resolve_name(name)
+    # check for legal base name once all changes have been made to the name
+    if not rosgraph.names.is_legal_base_name(name):
+        import warnings
+        warnings.warn("'%s' is not a legal ROS base name. This may cause problems with other ROS tools."%name, stacklevel=2)
+
+    # use rosgraph version of resolve_name to avoid remapping
+    resolved_node_name = rosgraph.names.resolve_name(name, rospy.core.get_caller_id())
     rospy.core.configure_logging(resolved_node_name)
     # #1810
     rospy.names.initialize_mappings(resolved_node_name)
@@ -339,6 +342,7 @@ def init_node(name, argv=None, anonymous=False, log_level=None, disable_rostime=
 
 #_master_proxy is a MasterProxy wrapper
 _master_proxy = None
+_master_proxy_lock = Lock()
 
 def get_master(env=os.environ):
     """
@@ -351,10 +355,12 @@ def get_master(env=os.environ):
     @raise Exception: if server cannot be located or system cannot be
     initialized
     """
-    global _master_proxy
-    if _master_proxy is not None:
-        return _master_proxy
-    _master_proxy = rospy.msproxy.MasterProxy(rosgraph.get_master_uri())
+    global _master_proxy, _master_proxy_lock
+    if _master_proxy is None:
+        with _master_proxy_lock:
+            if _master_proxy is None:
+                _master_proxy = rospy.msproxy.MasterProxy(
+                    rosgraph.get_master_uri())
     return _master_proxy
 
 #########################################################
@@ -422,13 +428,17 @@ def wait_for_message(topic, topic_type, timeout=None):
 # Param Server Access
 
 _param_server = None
+_param_server_lock = Lock()
 def _init_param_server():
     """
     Initialize parameter server singleton
     """
-    global _param_server
+    global _param_server, _param_server_lock
     if _param_server is None:
-        _param_server = get_master() #in the future param server will be a service
+        with _param_server_lock:
+            if _param_server is None:
+                _param_server = get_master()
+    return _param_server_lock
         
 # class and singleton to distinguish whether or not user has passed us a default value
 class _Unspecified(object): pass
@@ -438,7 +448,7 @@ def get_param(param_name, default=_unspecified):
     """
     Retrieve a parameter from the param server
 
-    NOTE: this method is not thread-safe.
+    NOTE: this method is thread-safe.
     
     @param default: (optional) default value to return if key is not set
     @type  default: any
@@ -460,7 +470,7 @@ def get_param_names():
     """
     Retrieve list of parameter names.
 
-    NOTE: this method is not thread-safe.
+    NOTE: this method is thread-safe.
     
     @return: parameter names
     @rtype: [str]
@@ -477,7 +487,7 @@ def set_param(param_name, param_value):
     """
     Set a parameter on the param server
 
-    NOTE: this method is not thread-safe.
+    NOTE: this method is thread-safe.
     
     @param param_name: parameter name
     @type  param_name: str
@@ -497,7 +507,7 @@ def search_param(param_name):
     """
     Search for a parameter on the param server
 
-    NOTE: this method is not thread-safe.
+    NOTE: this method is thread-safe.
     
     @param param_name: parameter name
     @type  param_name: str
@@ -512,7 +522,7 @@ def delete_param(param_name):
     """
     Delete a parameter on the param server
 
-    NOTE: this method is not thread-safe.
+    NOTE: this method is thread-safe.
     
     @param param_name: parameter name
     @type  param_name: str
@@ -526,7 +536,7 @@ def has_param(param_name):
     """
     Test if parameter exists on the param server
 
-    NOTE: this method is not thread-safe.
+    NOTE: this method is thread-safe.
     
     @param param_name: parameter name
     @type  param_name: str

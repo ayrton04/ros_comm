@@ -34,7 +34,6 @@
 import os
 import sys 
 import unittest
-import cStringIO
 import time
         
 from subprocess import Popen, PIPE, check_call, call
@@ -55,6 +54,7 @@ class TestRoswtfOffline(unittest.TestCase):
     def test_cmd_help(self):
         cmd = 'roswtf'
         output = Popen([cmd, '-h'], stdout=PIPE).communicate()[0]
+        output = output.decode()
         self.assert_('Options' in output)
             
     def test_offline(self):
@@ -72,11 +72,16 @@ class TestRoswtfOffline(unittest.TestCase):
             'cpp_common', 'roscpp_serialization', 'roscpp_traits', 'rostime',  # roscpp_core
             'rosbuild', 'rosclean', 'rosunit',  # ros
             'rospack', 'std_msgs', 'message_runtime', 'message_generation', 'gencpp', 'genlisp', 'genpy', 'genmsg', 'catkin',
-            'console_bridge'
         ]
         paths = [rospack.get_path(pkg) for pkg in pkgs]
         try:
             path = rospack.get_path('cmake_modules')
+        except rospkg.ResourceNotFound:
+            pass
+        else:
+            paths.append(path)
+        try:
+            path = rospack.get_path('geneus')
         except rospkg.ResourceNotFound:
             pass
         else:
@@ -88,12 +93,27 @@ class TestRoswtfOffline(unittest.TestCase):
 
         # run roswtf nakedly
         output = Popen([cmd], **kwds).communicate()
-        # - due both a positive and negative test
-        self.assert_('No errors or warnings' in output[0], "OUTPUT[%s]"%str(output))
-        self.assert_('ERROR' not in output[0], "OUTPUT[%s]"%str(output))
+        output = [o.decode() for o in output]
+
+        # there should either be no errors or warnings or
+        # there should be exactly one error about rosdep not being initialized
+        self._check_output(output[0])
 
         # run roswtf on a simple launch file offline
         p = os.path.join(get_test_path(), 'min.launch')
         output = Popen([cmd, p], **kwds).communicate()[0]
-        self.assert_('No errors or warnings' in output, "OUTPUT[%s]"%output)
-        self.assert_('ERROR' not in output, "OUTPUT[%s]"%output)        
+        output = output.decode()
+        self._check_output(output)
+
+    def _check_output(self, output):
+        # do both a positive and negative test
+        self.assert_(
+            'No errors or warnings' in output or 'Found 1 error' in output,
+            'OUTPUT[%s]' % output)
+        if 'No errors or warnings' in output:
+            self.assert_('ERROR' not in output, 'OUTPUT[%s]' % output)
+        if 'Found 1 error' in output:
+            self.assert_(output.count('ERROR') == 1, 'OUTPUT[%s]' % output)
+            self.assert_(
+                'Error: the rosdep view is empty' not in output,
+                'OUTPUT[%s]' % output)

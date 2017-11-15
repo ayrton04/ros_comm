@@ -252,6 +252,10 @@ bool get_loggers(std::map<std::string, levels::Level>& loggers)
     {
       level = levels::Fatal;
     }
+    else
+    {
+      return false;
+    }
     loggers[name] = level;
   }
 
@@ -301,6 +305,7 @@ public:
 protected:
   virtual void append(const log4cxx::spi::LoggingEventPtr& event, log4cxx::helpers::Pool& pool)
   {
+    (void)pool;
     levels::Level level;
     if (event->getLevel() == log4cxx::Level::getFatal())
     {

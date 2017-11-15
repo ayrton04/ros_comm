@@ -128,7 +128,7 @@ class TestXmlLoader(unittest.TestCase):
         try:
             loader.load_string('<foo />', mock)
             self.fail("no root lauch element passed")
-        except Exception, e:
+        except Exception as e:
             self.assertEquals(str(e), "Invalid roslaunch XML syntax: no root <launch> tag")
         
         f = open(os.path.join(self.xml_dir, 'test-node-valid.xml'), 'r')
@@ -183,9 +183,9 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlparseexception for [%s]"%filename)
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
-            except roslaunch.loader.LoadException, e:
+            except roslaunch.loader.LoadException:
                 pass
 
     def test_params(self):
@@ -206,7 +206,10 @@ class TestXmlLoader(unittest.TestCase):
         self.assertEquals("a child namespace parameter 2", param_d['/wg2/wg2childparam1'], p.value)
         self.assertEquals("a child namespace parameter 3", param_d['/wg2/wg2childparam2'], p.value)
 
-        import xmlrpclib
+        try:
+            from xmlrpc.client import Binary
+        except ImportError:
+            from xmlrpclib import Binary
         f = open(os.path.join(get_example_path(), 'example.launch'))
         try:
             contents = f.read()
@@ -215,7 +218,7 @@ class TestXmlLoader(unittest.TestCase):
         p = [p for p in mock.params if p.key == '/configfile'][0]
         self.assertEquals(contents, p.value, 1)
         p = [p for p in mock.params if p.key == '/binaryfile'][0]
-        self.assertEquals(xmlrpclib.Binary(contents), p.value, 1)
+        self.assertEquals(Binary(contents), p.value, 1)
 
         f = open(os.path.join(get_example_path(), 'example.launch'))
         try:
@@ -329,7 +332,7 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlloadexception for [%s]"%filename)
-            except roslaunch.loader.LoadException, e:
+            except roslaunch.loader.LoadException:
                 pass
         
     def test_node_valid(self):
@@ -347,7 +350,7 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlparseexception for [%s]"%filename)
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
     def test_node_rosparam(self):
@@ -510,7 +513,7 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlparseexception for [%s]"%filename)
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
     def _subtest_node_base(self, nodes):
@@ -615,7 +618,7 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlparseexception for [%s]"%filename)
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
         machines = self._load_valid_machines(['machine1', 'machine6', 'machine7', 'machine8', 'machine9'])
@@ -653,7 +656,7 @@ class TestXmlLoader(unittest.TestCase):
             try:
                 mock = self._load(test_file)
                 self.fail("xml loader should have thrown an exception due to missing environment var")
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
         # load the last required env var
@@ -683,7 +686,7 @@ class TestXmlLoader(unittest.TestCase):
             try:
                 mock = self._load(test_file)
                 self.fail("xml loader should have thrown an exception due to missing environment var")
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
         os.environ['NAME'] = "name-foo"
@@ -709,7 +712,7 @@ class TestXmlLoader(unittest.TestCase):
         loader = roslaunch.xmlloader.XmlLoader()
         mock = RosLaunchMock()
         loader.load(os.path.join(self.xml_dir, 'test-remap-valid.xml'), mock)
-        names = ["node%s"%i for i in xrange(1, 7)]
+        names = ["node%s"%i for i in range(1, 7)]
         nodes = [n for n in mock.nodes if n.type in names]
         for n in nodes:
             if n.type == 'node1':
@@ -778,7 +781,7 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlparseexception for [%s]"%filename)
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
     def test_remap_invalid(self):
@@ -796,7 +799,7 @@ class TestXmlLoader(unittest.TestCase):
                 self.assert_(os.path.exists(filename))
                 loader.load(filename, RosLaunchMock())
                 self.fail("xmlloader did not throw an xmlparseexception for [%s]"%filename)
-            except roslaunch.xmlloader.XmlParseException, e:
+            except roslaunch.xmlloader.XmlParseException:
                 pass
 
     def test_if_unless(self):
@@ -827,7 +830,7 @@ class TestXmlLoader(unittest.TestCase):
         try:
             loader.load(filename, mock, argv=[])
             self.fail("should have raised with invalid if and unless spec")
-        except roslaunch.xmlloader.XmlParseException, e:
+        except roslaunch.xmlloader.XmlParseException as e:
             self.assert_('unless' in str(e))
             self.assert_('if' in str(e))
 
@@ -839,7 +842,7 @@ class TestXmlLoader(unittest.TestCase):
         try:
             loader.load(filename, mock, argv=[])
             self.fail("should have raised with missing arg")
-        except roslaunch.xmlloader.XmlParseException, e:
+        except roslaunch.xmlloader.XmlParseException as e:
             self.assert_('required' in str(e))
 
         # test with invalid $(arg unknown)
@@ -847,7 +850,7 @@ class TestXmlLoader(unittest.TestCase):
         try:
             loader.load(filename, mock, argv=[])
             self.fail("should have raised with unknown arg")
-        except roslaunch.xmlloader.XmlParseException, e:
+        except roslaunch.xmlloader.XmlParseException as e:
             self.assert_('missing' in str(e))
 
         # test with invalid $(arg unknown)
@@ -855,7 +858,7 @@ class TestXmlLoader(unittest.TestCase):
         try:
             loader.load(filename, mock, argv=[])
             self.fail("should have raised with multiple decl")
-        except roslaunch.xmlloader.XmlParseException, e:
+        except roslaunch.xmlloader.XmlParseException as e:
             self.assert_('grounded' in str(e))
             
                     
@@ -935,4 +938,115 @@ class TestXmlLoader(unittest.TestCase):
         self.assertEquals(param_d['/include3/include_test/p3_test'], 'set')
         self.assertEquals(param_d['/include3/include_test/p4_test'], 'new3')
         
+    # Test the new attribute <include pass_all_args={"true"|"false"}>
+    def test_arg_all(self):
+        loader = roslaunch.xmlloader.XmlLoader()
+        filename = os.path.join(self.xml_dir, 'test-arg-all.xml')
 
+        # Test suite A: load without an optional arg set externally
+        mock = RosLaunchMock()
+        loader.load(filename, mock, argv=["required:=test_arg"])
+
+        param_d = {}
+        for p in mock.params:
+            param_d[p.key] = p.value
+
+        # Sanity check: Parent namespace
+        self.assertEquals(param_d['/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/p2_test'], 'not_set')
+        self.assertEquals(param_d['/p3_test'], 'parent')
+
+        # Test case 1: include without pass_all_args
+        self.assertEquals(param_d['/notall/include_test/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/notall/include_test/p2_test'], 'not_set')
+        self.assertEquals(param_d['/notall/include_test/p3_test'], 'set')
+
+        # Test case 2: include without pass_all_args attribute, and pass optional arg
+        # internally
+        self.assertEquals(param_d['/notall_optional/include_test/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/notall_optional/include_test/p2_test'], 'not_set')
+        self.assertEquals(param_d['/notall_optional/include_test/p3_test'], 'set')
+
+        # Test case 3: include with pass_all_args attribute, instead of passing individual
+        # args
+        self.assertEquals(param_d['/all/include_test/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/all/include_test/p2_test'], 'not_set')
+        self.assertEquals(param_d['/all/include_test/p3_test'], 'set')
+
+        # Test case 4: include with pass_all_args attribute, and override one
+        # arg inside the include tag
+        self.assertEquals(param_d['/all_override/include_test/p1_test'], 'override')
+        self.assertEquals(param_d['/all_override/include_test/p2_test'], 'not_set')
+        self.assertEquals(param_d['/all_override/include_test/p3_test'], 'set')
+
+        # Test suite B: load with an optional arg set externally
+        mock = RosLaunchMock()
+        loader.load(filename, mock, argv=["required:=test_arg", "optional:=test_arg2"])
+
+        param_d = {}
+        for p in mock.params:
+            param_d[p.key] = p.value
+
+        # Sanity check: Parent namespace
+        self.assertEquals(param_d['/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/p2_test'], 'test_arg2')
+        self.assertEquals(param_d['/p3_test'], 'parent')
+
+        # Test case 1: include without pass_all_args attribute
+        self.assertEquals(param_d['/notall/include_test/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/notall/include_test/p2_test'], 'not_set')
+        self.assertEquals(param_d['/notall/include_test/p3_test'], 'set')
+
+        # Test case 2: include without pass_all_args attribute, and pass optional arg
+        # internally
+        self.assertEquals(param_d['/notall_optional/include_test/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/notall_optional/include_test/p2_test'], 'test_arg2')
+        self.assertEquals(param_d['/notall_optional/include_test/p3_test'], 'set')
+
+        # Test case 3: include with pass_all_args attribute, instead of passing individual
+        # args
+        self.assertEquals(param_d['/all/include_test/p1_test'], 'test_arg')
+        self.assertEquals(param_d['/all/include_test/p2_test'], 'test_arg2')
+        self.assertEquals(param_d['/all/include_test/p3_test'], 'set')
+
+        # Test case 4: include with pass_all_args attribute, and override one
+        # arg inside the include tag
+        self.assertEquals(param_d['/all_override/include_test/p1_test'], 'override')
+        self.assertEquals(param_d['/all_override/include_test/p2_test'], 'test_arg2')
+        self.assertEquals(param_d['/all_override/include_test/p3_test'], 'set')
+
+    def test_arg_all_includes(self):
+        loader = roslaunch.xmlloader.XmlLoader()
+        # Test 1:
+        # Can't explicitly set an arg when including a file that sets the same
+        # arg as constant.
+        mock = RosLaunchMock()
+        filename = os.path.join(self.xml_dir, 'test-arg-invalid-include.xml')
+        try:
+            loader.load(filename, mock)            
+            self.fail('should have thrown an exception')
+        except roslaunch.xmlloader.XmlParseException:
+            pass
+
+        # Test 2:
+        # Can have arg set in parent launch file, then include a file that sets
+        # it constant, with pass_all_args="true"
+        mock = RosLaunchMock()
+        filename = os.path.join(self.xml_dir, 'test-arg-valid-include.xml')
+        # Just make sure there's no exception
+        loader.load(filename, mock)            
+
+        # This test checks for exception behavior that would be nice to have,
+        # but would require intrusive changes to how roslaunch passes arguments
+        # to included contexts. It currently fails. I'm leaving it here as a
+        # reference for potential future work.
+        ## Test 3:
+        ## Can't do explicit override of arg during inclusion of file that sets
+        ## it constant, even when pass_all_args="true"
+        #mock = RosLaunchMock()
+        #filename = os.path.join(self.xml_dir, 'test-arg-invalid-include2.xml')
+        #try:
+        #    loader.load(filename, mock)            
+        #    self.fail('should have thrown an exception')
+        #except roslaunch.xmlloader.XmlParseException:
+        #    pass

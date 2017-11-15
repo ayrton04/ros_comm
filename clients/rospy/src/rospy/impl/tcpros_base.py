@@ -349,7 +349,7 @@ class TCPROSServer(object):
             # collect stack trace separately in local log file
             if not rospy.core.is_shutdown_requested():
                 logwarn("Inbound TCP/IP connection failed: %s", e)
-                rospyerr("Inbound TCP/IP connection failed:\n%s", traceback.format_exc(e))
+                rospyerr("Inbound TCP/IP connection failed:\n%s", traceback.format_exc())
             if sock is not None:
                 sock.close()
 
@@ -518,6 +518,16 @@ class TCPROSTransport(Transport):
         @type  timeout: float
         @raise TransportInitError: if unable to create connection
         """
+        # first make sure that if ROS_HOSTNAME=localhost, we will not attempt
+        # to connect to anything other than localhost
+        if ("ROS_HOSTNAME" in os.environ) and (os.environ["ROS_HOSTNAME"] == "localhost"):
+          if not rosgraph.network.is_local_address(dest_addr):
+            msg = "attempted to connect to non-local host [%s] from a node launched with ROS_HOSTNAME=localhost" % (dest_addr)
+            logwarn(msg)
+            self.close()
+            raise TransportInitError(msg)  # bubble up
+ 
+        # now we can proceed with trying to connect.
         try:
             self.endpoint_id = endpoint_id
             self.dest_address = (dest_addr, dest_port)
@@ -571,9 +581,10 @@ class TCPROSTransport(Transport):
         for required in ['md5sum', 'type']:
             if not required in header:
                 raise TransportInitError("header missing required field [%s]"%required)
-        self.md5sum = header['md5sum']
-        self.callerid_pub = header['callerid']
         self.type = header['type']
+        self.md5sum = header['md5sum']
+        if 'callerid' in header:
+            self.callerid_pub = header['callerid']
         if header.get('latching', '0') == '1':
             self.is_latched = True
 

@@ -83,11 +83,16 @@ class TestRostopicOnline(unittest.TestCase):
             'cpp_common', 'roscpp_serialization', 'roscpp_traits', 'rostime',  # roscpp_core
             'rosbuild', 'rosclean', 'rosunit',  # ros
             'rospack', 'std_msgs', 'message_runtime', 'message_generation', 'gencpp', 'genlisp', 'genpy', 'genmsg', 'catkin',
-            'console_bridge'
         ]
         paths = [rospack.get_path(pkg) for pkg in pkgs]
         try:
             path = rospack.get_path('cmake_modules')
+        except rospkg.ResourceNotFound:
+            pass
+        else:
+            paths.append(path)
+        try:
+            path = rospack.get_path('geneus')
         except rospkg.ResourceNotFound:
             pass
         else:
@@ -102,15 +107,27 @@ class TestRostopicOnline(unittest.TestCase):
         # every package in the ROS stack, which doesn't work.
 
         output, err = Popen([cmd], **kwds).communicate()
-        self.assert_('No errors or warnings' in output, "OUTPUT[%s]\nstderr[%s}"%(output, err))
-        self.assert_('ERROR' not in output, "CMD [%s] KWDS[%s] OUTPUT[%s]"%(cmd, kwds, output))
+        self._check_output([cmd], output, err)
 
         # run roswtf on a simple launch file online
         rospack = rospkg.RosPack()
         p = os.path.join(rospack.get_path('roswtf'), 'test', 'min.launch')
         output = Popen([cmd, p], **kwds).communicate()[0]
-        self.assert_('No errors or warnings' in output, "CMD[%s] OUTPUT[%s]"%([cmd, p], output))
-        self.assert_('ERROR' not in output, "OUTPUT[%s]"%output)        
-        
+        self._check_output([cmd, p], output)
+
+    def _check_output(self, cmd, output, error=None):
+        # do both a positive and negative test
+        self.assert_(
+            'No errors or warnings' in output or 'Found 1 error' in output,
+            'CMD[%s] OUTPUT[%s]%s' %
+            (' '.join(cmd), output, '\nstderr[%s]' % error if error else ''))
+        if 'No errors or warnings' in output:
+            self.assert_('ERROR' not in output, 'OUTPUT[%s]' % output)
+        if 'Found 1 error' in output:
+            self.assert_(output.count('ERROR') == 1, 'OUTPUT[%s]' % output)
+            self.assert_(
+                'Error: the rosdep view is empty' not in output,
+                'OUTPUT[%s]' % output)
+
 if __name__ == '__main__':
     rostest.run(PKG, NAME, TestRostopicOnline, sys.argv)

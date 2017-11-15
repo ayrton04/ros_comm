@@ -109,7 +109,9 @@ RecorderOptions::RecorderOptions() :
     split(false),
     max_size(0),
     max_duration(-1.0),
-    node("")
+    node(""),
+    min_space(1024 * 1024 * 1024),
+    min_space_str("1G")
 {
 }
 
@@ -187,7 +189,11 @@ int Recorder::run() {
 
     ros::Timer check_master_timer;
     if (options_.record_all || options_.regex || (options_.node != std::string("")))
+    {
+        // check for master first
+        doCheckMaster(ros::TimerEvent(), nh);
         check_master_timer = nh.createTimer(ros::Duration(1.0), boost::bind(&Recorder::doCheckMaster, this, _1, boost::ref(nh)));
+    }
 
     ros::MultiThreadedSpinner s(10);
     ros::spin(s);
@@ -205,19 +211,17 @@ shared_ptr<ros::Subscriber> Recorder::subscribe(string const& topic) {
 	ROS_INFO("Subscribing to %s", topic.c_str());
 
     ros::NodeHandle nh;
-    shared_ptr<int> count(new int(options_.limit));
-    shared_ptr<ros::Subscriber> sub(new ros::Subscriber);
+    shared_ptr<int> count(boost::make_shared<int>(options_.limit));
+    shared_ptr<ros::Subscriber> sub(boost::make_shared<ros::Subscriber>());
 
     ros::SubscribeOptions ops;
     ops.topic = topic;
     ops.queue_size = 100;
     ops.md5sum = ros::message_traits::md5sum<topic_tools::ShapeShifter>();
     ops.datatype = ros::message_traits::datatype<topic_tools::ShapeShifter>();
-    ops.helper = ros::SubscriptionCallbackHelperPtr(
-        new ros::SubscriptionCallbackHelperT<const ros::MessageEvent<topic_tools::ShapeShifter const>& >(
-            boost::bind(&Recorder::doQueue, this, _1, topic, sub, count)
-        )
-    );
+    ops.helper = boost::make_shared<ros::SubscriptionCallbackHelperT<
+        const ros::MessageEvent<topic_tools::ShapeShifter const> &> >(
+            boost::bind(&Recorder::doQueue, this, _1, topic, sub, count));
     *sub = nh.subscribe(ops);
 
     currently_recording_.insert(topic);
@@ -266,6 +270,7 @@ bool Recorder::shouldSubscribeToTopic(std::string const& topic, bool from_node) 
 template<class T>
 std::string Recorder::timeToStr(T ros_t)
 {
+    (void)ros_t;
     std::stringstream msg;
     const boost::posix_time::ptime now=
         boost::posix_time::second_clock::local_time();
@@ -329,12 +334,11 @@ void Recorder::updateFilenames() {
     vector<string> parts;
 
     std::string prefix = options_.prefix;
-    uint32_t ind = prefix.rfind(".bag");
+    size_t ind = prefix.rfind(".bag");
 
-    if (ind == prefix.size() - 4)
+    if (ind != std::string::npos && ind == prefix.size() - 4)
     {
       prefix.erase(ind);
-      ind = prefix.rfind(".bag");
     }
 
     if (prefix.length() > 0)
@@ -343,6 +347,11 @@ void Recorder::updateFilenames() {
         parts.push_back(timeToStr(ros::WallTime::now()));
     if (options_.split)
         parts.push_back(boost::lexical_cast<string>(split_count_));
+
+    if (parts.size() == 0)
+    {
+      throw BagException("Bag filename is empty (neither of these was specified: prefix, append_date, split)");
+    }
 
     target_filename_ = parts[0];
     for (unsigned int i = 1; i < parts.size(); i++)
@@ -354,6 +363,7 @@ void Recorder::updateFilenames() {
 
 //! Callback to be invoked to actually do the recording
 void Recorder::snapshotTrigger(std_msgs::Empty::ConstPtr trigger) {
+    (void)trigger;
     updateFilenames();
     
     ROS_INFO("Triggered snapshot recording with name %s.", target_filename_.c_str());
@@ -534,6 +544,8 @@ void Recorder::doRecordSnapshotter() {
 }
 
 void Recorder::doCheckMaster(ros::TimerEvent const& e, ros::NodeHandle& node_handle) {
+    (void)e;
+    (void)node_handle;
     ros::master::V_TopicInfo topics;
     if (ros::master::getTopics(topics)) {
 		foreach(ros::master::TopicInfo const& t, topics) {
@@ -611,15 +623,15 @@ bool Recorder::checkDisk() {
     }
     unsigned long long free_space = 0;
     free_space = (unsigned long long) (fiData.f_bsize) * (unsigned long long) (fiData.f_bavail);
-    if (free_space < 1073741824ull)
+    if (free_space < options_.min_space)
     {
-        ROS_ERROR("Less than 1GB of space free on disk with %s.  Disabling recording.", bag_.getFileName().c_str());
+        ROS_ERROR("Less than %s of space free on disk with %s.  Disabling recording.", options_.min_space_str.c_str(), bag_.getFileName().c_str());
         writing_enabled_ = false;
         return false;
     }
-    else if (free_space < 5368709120ull)
+    else if (free_space < 5 * options_.min_space)
     {
-        ROS_WARN("Less than 5GB of space free on disk with %s.", bag_.getFileName().c_str());
+        ROS_WARN("Less than 5 x %s of space free on disk with %s.", options_.min_space_str.c_str(), bag_.getFileName().c_str());
     }
     else
     {
@@ -639,15 +651,15 @@ bool Recorder::checkDisk() {
         writing_enabled_ = false;
         return false;
     }
-    if ( info.available < 1073741824ull)
+    if ( info.available < options_.min_space)
     {
-        ROS_ERROR("Less than 1GB of space free on disk with %s.  Disabling recording.", bag_.getFileName().c_str());
+        ROS_ERROR("Less than %s of space free on disk with %s.  Disabling recording.", options_.min_space_str.c_str(), bag_.getFileName().c_str());
         writing_enabled_ = false;
         return false;
     }
-    else if (info.available < 5368709120ull)
+    else if (info.available < 5 * options_.min_space)
     {
-        ROS_WARN("Less than 5GB of space free on disk with %s.", bag_.getFileName().c_str());
+        ROS_WARN("Less than 5 x %s of space free on disk with %s.", options_.min_space_str.c_str(), bag_.getFileName().c_str());
         writing_enabled_ = true;
     }
     else

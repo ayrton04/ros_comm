@@ -2,6 +2,84 @@
 Changelog for package roslaunch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.11.21 (2017-03-06)
+--------------------
+* improve error message for invalid tags (`#989 <https://github.com/ros/ros_comm/pull/989>`_)
+* fix caching logic to improve performance (`#931 <https://github.com/ros/ros_comm/pull/931>`_)
+
+1.11.20 (2016-06-27)
+--------------------
+* fix roslaunch check for multiple tests with multiple args (`#814 <https://github.com/ros/ros_comm/pull/814>`_)
+
+1.11.19 (2016-04-18)
+--------------------
+
+1.11.18 (2016-03-17)
+--------------------
+
+1.11.17 (2016-03-11)
+--------------------
+* improve roslaunch-check to not fail if recursive dependencies lack dependencies (`#730 <https://github.com/ros/ros_comm/pull/730>`_)
+* add "pass_all_args" attribute to roslaunch "include" tag (`#710 <https://github.com/ros/ros_comm/pull/710>`_)
+* fix a typo in unknown host error message (`#735 <https://github.com/ros/ros_comm/pull/735>`_)
+* wait for param server to be available before trying to get param (`#711 <https://github.com/ros/ros_comm/pull/711>`_)
+
+1.11.16 (2015-11-09)
+--------------------
+* add `-w` and `-t` options (`#687 <https://github.com/ros/ros_comm/pull/687>`_)
+* fix missing minimum version for rospkg dependency (`#693 <https://github.com/ros/ros_comm/issues/693>`_)
+
+1.11.15 (2015-10-13)
+--------------------
+* improve performance by reusing the rospack instance across nodes with the same default environment (`#682 <https://github.com/ros/ros_comm/pull/682>`_)
+
+1.11.14 (2015-09-19)
+--------------------
+* add more information when test times out
+
+1.11.13 (2015-04-28)
+--------------------
+
+1.11.12 (2015-04-27)
+--------------------
+
+1.11.11 (2015-04-16)
+--------------------
+
+1.11.10 (2014-12-22)
+--------------------
+* fix exception at roscore startup if python has IPv6 disabled (`#515 <https://github.com/ros/ros_comm/issues/515>`_)
+* fix error handling (`#516 <https://github.com/ros/ros_comm/pull/516>`_)
+* fix compatibility with paramiko 1.10.0 (`#498 <https://github.com/ros/ros_comm/pull/498>`_)
+
+1.11.9 (2014-08-18)
+-------------------
+* fix usage of logger before it is initialized (`#490 <https://github.com/ros/ros_comm/issues/490>`_) (regression from 1.11.6)
+
+1.11.8 (2014-08-04)
+-------------------
+* remove implicit rostest dependency and use rosunit instead (`#475 <https://github.com/ros/ros_comm/issues/475>`_)
+* accept stdin input alongside files (`#472 <https://github.com/ros/ros_comm/issues/472>`_)
+
+1.11.7 (2014-07-18)
+-------------------
+* fix the ROS_MASTER_URI environment variable logic on Windows (`#2 <https://github.com/windows/ros_comm/issues/2>`_)
+
+1.11.6 (2014-07-10)
+-------------------
+* fix printing of non-ascii roslaunch parameters (`#454 <https://github.com/ros/ros_comm/issues/454>`_)
+* add respawn_delay attribute to node tag in roslaunch (`#446 <https://github.com/ros/ros_comm/issues/446>`_)
+* write traceback for exceptions in roslaunch to log file
+
+1.11.5 (2014-06-24)
+-------------------
+
+1.11.4 (2014-06-16)
+-------------------
+* fix handling of if/unless attributes on args (`#437 <https://github.com/ros/ros_comm/issues/437>`_)
+* improve parameter printing in roslaunch (`#89 <https://github.com/ros/ros_comm/issues/89>`_)
+* Python 3 compatibility (`#426 <https://github.com/ros/ros_comm/issues/426>`_, `#427 <https://github.com/ros/ros_comm/issues/427>`_, `#429 <https://github.com/ros/ros_comm/issues/429>`_)
+
 1.11.3 (2014-05-21)
 -------------------
 

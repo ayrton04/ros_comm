@@ -45,6 +45,9 @@
   #include <sys/types.h>
   #include <sys/uio.h>
   #include <unistd.h>
+#elif defined(__ANDROID__)
+  // For readv() and writev() on ANDROID
+  #include <sys/uio.h>
 #endif
 
 namespace ros
@@ -139,6 +142,9 @@ std::string TransportUDP::getTransportInfo()
 
 bool TransportUDP::connect(const std::string& host, int port, int connection_id)
 {
+  if (!isHostAllowed(host))
+    return false; // adios amigo
+
   sock_ = socket(AF_INET, SOCK_DGRAM, 0);
   connection_id_ = connection_id;
 
@@ -239,7 +245,9 @@ bool TransportUDP::createIncoming(int port, bool is_server)
 
   server_address_.sin_family = AF_INET;
   server_address_.sin_port = htons(port);
-  server_address_.sin_addr.s_addr = INADDR_ANY;
+  server_address_.sin_addr.s_addr = isOnlyLocalhostAllowed() ? 
+                                    htonl(INADDR_LOOPBACK) :
+                                    INADDR_ANY;
   if (bind(sock_, (sockaddr *)&server_address_, sizeof(server_address_)) < 0)
   {
     ROS_ERROR("bind() failed with error [%s]",  last_socket_error_string());
@@ -582,6 +590,7 @@ int32_t TransportUDP::write(uint8_t* buffer, uint32_t size)
       else
       {
         num_bytes = 0;
+        --this_block;
       }
     }
     else if (num_bytes < (unsigned) sizeof(header))
@@ -678,7 +687,7 @@ TransportUDPPtr TransportUDP::createOutgoing(std::string host, int port, int con
 {
   ROS_ASSERT(is_server_);
   
-  TransportUDPPtr transport(new TransportUDP(poll_set_, flags_, max_datagram_size));
+  TransportUDPPtr transport(boost::make_shared<TransportUDP>(poll_set_, flags_, max_datagram_size));
   if (!transport->connect(host, port, connection_id))
   {
     ROS_ERROR("Failed to create outgoing connection");
